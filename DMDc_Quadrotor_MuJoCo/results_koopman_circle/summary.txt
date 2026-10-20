@@ -1,0 +1,9 @@
+CIRCULAR QUADROTOR — KOOPMAN-DMDc
+====================================
+
+Physical dimension: 12
+Lifted dimension: 18
+Input dimension: 4
+Selected SVD rank: 6
+Condition number: 6.059403718192e+09
+Retained energy: 99.940530257665%

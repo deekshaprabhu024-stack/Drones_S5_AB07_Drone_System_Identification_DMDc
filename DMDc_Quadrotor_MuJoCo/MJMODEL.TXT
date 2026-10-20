@@ -1,0 +1,899 @@
+MuJoCo version 3.11.0
+model name     dmdc_quadrotor
+
+MEMORY
+  total            11 KB
+  bvhs          384 bytes
+  other            10 KB
+
+SIZES
+  nq                  7
+  nv                  6
+  nu                  4
+  nactuator           4
+  nout                4
+  nbody               2
+  nbvh                6
+  nbvhstatic          6
+  njnt                1
+  ntree               1
+  nM                  21
+  nB                  12
+  nC                  6
+  nD                  36
+  ngeom               8
+  nsite               4
+  nlight              1
+  nnames              163
+  npaths              1
+  nnames_map          40
+  nJmom               24
+  njmax               -1
+  nconmax             -1
+  narena              13631488
+  nbuffer             16280
+
+FLAG
+  flg_gravcomp        0
+  flg_surfacevel      0
+
+OPTION
+  timestep            0.002   
+  impratio            1       
+  tolerance           1e-08   
+  ls_tolerance        0.01    
+  noslip_tolerance    1e-06   
+  ccd_tolerance       1e-06   
+  sleep_tolerance     0.001   
+  gravity             0        0       -9.8     
+  wind                0        0        0       
+  magnetic            0       -0.5      0       
+  density             0       
+  viscosity           0       
+  o_margin            0       
+  o_solref            0.02     1       
+  o_solimp            0.9      0.95     0.001    0.5      2       
+  o_friction          1        1        0.005    0.0001   0.0001  
+  integrator          1
+  cone                0
+  jacobian            2
+  solver              2
+  iterations          100
+  ls_iterations       50
+  noslip_iterations   0
+  ccd_iterations      35
+  disableflags        0
+  enableflags         0
+  disableactuator     0
+  sdf_initpoints      40
+  sdf_iterations      10
+
+VISUAL
+  GLOBAL
+    cameraid          -1
+    orthographic      0
+    fovy              45      
+    ipd               0.068   
+    azimuth           90      
+    elevation        -45      
+    linewidth         1       
+    glow              0.3     
+    realtime          1       
+    offwidth          640
+    offheight         480
+    ellipsoidinertia  0
+    bvactive          1
+  QUALITY
+    shadowsize        4096
+    offsamples        4
+    numslices         28
+    numstacks         16
+    numquads          4
+  HEADLIGHT
+    ambient           0.3      0.3      0.3     
+    diffuse           0.8      0.8      0.8     
+    specular          0.5      0.5      0.5     
+    active            1
+  MAP
+    stiffness         1e+02   
+    stiffnessrot      5e+02   
+    force             0.005   
+    torque            0.1     
+    alpha             0.3     
+    fogstart          3       
+    fogend            10      
+    znear             0.01    
+    zfar              1e+02   
+    haze              0.3     
+    shadowclip        1       
+    shadowscale       0.6     
+    actuatortendon    2       
+  SCALE
+    forcewidth        0.1     
+    contactwidth      0.3     
+    contactheight     0.1     
+    connect           0.2     
+    com               0.4     
+    camera            0.3     
+    light             0.3     
+    selectpoint       0.2     
+    jointlength       1       
+    jointwidth        0.1     
+    actuatorlength    0.7     
+    actuatorwidth     0.2     
+    framelength       1       
+    framewidth        0.1     
+    constraint        0.1     
+    slidercrank       0.2     
+    frustum           10      
+  RGBA
+    fog               0        0        0        1       
+    haze              1        1        1        1       
+    force             1        0.5      0.5      1       
+    inertia           0.8      0.2      0.2      0.6     
+    joint             0.2      0.6      0.8      1       
+    actuator          0.2      0.25     0.2      1       
+    actuatornegative  0.2      0.6      0.9      1       
+    actuatorpositive  0.9      0.4      0.2      1       
+    com               0.9      0.9      0.9      1       
+    camera            0.6      0.9      0.6      1       
+    light             0.6      0.6      0.9      1       
+    selectpoint       0.9      0.9      0.1      1       
+    connect           0.2      0.2      0.8      1       
+    contactpoint      0.9      0.6      0.2      1       
+    contactforce      0.7      0.9      0.9      1       
+    contactfriction   0.9      0.8      0.4      1       
+    contacttorque     0.9      0.7      0.9      1       
+    contactgap        0.5      0.8      0.9      1       
+    rangefinder       1        1        0.1      1       
+    constraint        0.9      0        0        1       
+    slidercrank       0.5      0.3      0.8      1       
+    crankbroken       0.9      0        0        1       
+    frustum           1        1        0        0.2     
+    bv                0        1        0        0.5     
+    bvactive          1        0        0        0.5     
+
+totalmass             1       
+
+STATISTIC
+  meaninertia         0.51    
+  meanmass            1       
+  meansize            0.58    
+  extent              2.5     
+  center              0        0        0.23    
+
+qpos0                 0         0         1         1         0         0         0        
+
+qpos_spring           0         0         1         1         0         0         0        
+
+
+BODY 0:
+  name                  world
+  body_parentid         0 
+  body_rootid           0 
+  body_weldid           0 
+  body_mocapid          -1 
+  body_jntnum           0 
+  body_jntadr           -1 
+  body_dofnum           0 
+  body_dofadr           -1 
+  body_treeid           -1 
+  body_geomnum          1 
+  body_geomadr          0 
+  body_simple           1 
+  body_sameframe        1 
+  body_pos              0         0         0        
+  body_quat             1         0         0         0        
+  body_ipos             0         0         0        
+  body_iquat            1         0         0         0        
+  body_mass             0        
+  body_subtreemass      1        
+  body_inertia          0         0         0        
+  body_invweight0       0         0        
+  body_gravcomp         0        
+  body_margin           0        
+  body_plugin           -1 
+  body_contype          1 
+  body_conaffinity      1 
+  body_bvhadr           0 
+  body_bvhnum           1 
+
+BODY 1:
+  name                  quadrotor
+  body_parentid         0 
+  body_rootid           1 
+  body_weldid           1 
+  body_mocapid          -1 
+  body_jntnum           1 
+  body_jntadr           0 
+  body_dofnum           6 
+  body_dofadr           0 
+  body_treeid           0 
+  body_geomnum          7 
+  body_geomadr          1 
+  body_simple           1 
+  body_sameframe        1 
+  body_pos              0         0         1        
+  body_quat             1         0         0         0        
+  body_ipos             0         0         0        
+  body_iquat            1         0         0         0        
+  body_mass             1        
+  body_subtreemass      1        
+  body_inertia          0.02      0.02      0.04     
+  body_invweight0       1         42       
+  body_gravcomp         0        
+  body_margin           0        
+  body_plugin           -1 
+  body_contype          1 
+  body_conaffinity      1 
+  body_bvhadr           1 
+  body_bvhnum           5 
+
+
+JOINT 0:
+  name                  free
+  jnt_type              0 
+  jnt_qposadr           0 
+  jnt_dofadr            0 
+  jnt_bodyid            1 
+  jnt_actuatorid        -1 
+  jnt_group             0 
+  jnt_limited           0 
+  jnt_actfrclimited     0 
+  jnt_actgravcomp       0 
+  jnt_solref            0.02      1        
+  jnt_solimp            0.9       0.95      0.001     0.5       2        
+  jnt_pos               0         0         0        
+  jnt_axis              0         0         1        
+  jnt_stiffness         0        
+  jnt_stiffnesspoly     0         0        
+  jnt_range             0         0        
+  jnt_actfrcrange       0         0        
+  jnt_margin            0        
+
+
+DOF 0:
+  dof_bodyid            1 
+  dof_jntid             0 
+  dof_parentid          -1 
+  dof_treeid            0 
+  dof_Madr              0 
+  dof_simplenum         6 
+  dof_solref            0.02      1        
+  dof_solimp            0.9       0.95      0.001     0.5       2        
+  dof_frictionloss      0        
+  dof_armature          0        
+  dof_damping           0        
+  dof_dampingpoly       0         0        
+  dof_invweight0        1        
+  dof_M0                1        
+  dof_length            1        
+
+DOF 1:
+  dof_bodyid            1 
+  dof_jntid             0 
+  dof_parentid          0 
+  dof_treeid            0 
+  dof_Madr              1 
+  dof_simplenum         5 
+  dof_solref            0.02      1        
+  dof_solimp            0.9       0.95      0.001     0.5       2        
+  dof_frictionloss      0        
+  dof_armature          0        
+  dof_damping           0        
+  dof_dampingpoly       0         0        
+  dof_invweight0        1        
+  dof_M0                1        
+  dof_length            1        
+
+DOF 2:
+  dof_bodyid            1 
+  dof_jntid             0 
+  dof_parentid          1 
+  dof_treeid            0 
+  dof_Madr              3 
+  dof_simplenum         4 
+  dof_solref            0.02      1        
+  dof_solimp            0.9       0.95      0.001     0.5       2        
+  dof_frictionloss      0        
+  dof_armature          0        
+  dof_damping           0        
+  dof_dampingpoly       0         0        
+  dof_invweight0        1        
+  dof_M0                1        
+  dof_length            1        
+
+DOF 3:
+  dof_bodyid            1 
+  dof_jntid             0 
+  dof_parentid          2 
+  dof_treeid            0 
+  dof_Madr              6 
+  dof_simplenum         3 
+  dof_solref            0.02      1        
+  dof_solimp            0.9       0.95      0.001     0.5       2        
+  dof_frictionloss      0        
+  dof_armature          0        
+  dof_damping           0        
+  dof_dampingpoly       0         0        
+  dof_invweight0        42       
+  dof_M0                0.02     
+  dof_length            0.58     
+
+DOF 4:
+  dof_bodyid            1 
+  dof_jntid             0 
+  dof_parentid          3 
+  dof_treeid            0 
+  dof_Madr              10 
+  dof_simplenum         2 
+  dof_solref            0.02      1        
+  dof_solimp            0.9       0.95      0.001     0.5       2        
+  dof_frictionloss      0        
+  dof_armature          0        
+  dof_damping           0        
+  dof_dampingpoly       0         0        
+  dof_invweight0        42       
+  dof_M0                0.02     
+  dof_length            0.58     
+
+DOF 5:
+  dof_bodyid            1 
+  dof_jntid             0 
+  dof_parentid          4 
+  dof_treeid            0 
+  dof_Madr              15 
+  dof_simplenum         1 
+  dof_solref            0.02      1        
+  dof_solimp            0.9       0.95      0.001     0.5       2        
+  dof_frictionloss      0        
+  dof_armature          0        
+  dof_damping           0        
+  dof_dampingpoly       0         0        
+  dof_invweight0        42       
+  dof_M0                0.04     
+  dof_length            0.58     
+
+
+TREE 0:
+  tree_bodyadr          1 
+  tree_bodynum          1 
+  tree_dofadr           0 
+  tree_dofnum           6 
+  tree_sleep_policy     1 
+
+
+GEOM 0:
+  name                  floor
+  geom_type             0 
+  geom_contype          1 
+  geom_conaffinity      1 
+  geom_condim           3 
+  geom_bodyid           0 
+  geom_dataid           -1 
+  geom_matid            -1 
+  geom_group            0 
+  geom_priority         0 
+  geom_plugin           -1 
+  geom_sameframe        1 
+  geom_solmix           1        
+  geom_solref           0.02      1        
+  geom_solimp           0.9       0.95      0.001     0.5       2        
+  geom_size             10        10        0.1      
+  geom_aabb             0         0        -5e+09     1e+10     1e+10     5e+09    
+  geom_rbound           0        
+  geom_pos              0         0         0        
+  geom_quat             1         0         0         0        
+  geom_friction         0.8       0.1       0.1      
+  geom_margin           0        
+  geom_gap              0        
+  geom_surfacevel       0         0         0         0         0         0        
+  geom_adhesion         0        
+  geom_fluid            0         0         0         0         0         0         0         0         0         0         0         0        
+  geom_rgba             0.18      0.18      0.18      1        
+
+GEOM 1:
+  name                  body
+  geom_type             6 
+  geom_contype          1 
+  geom_conaffinity      1 
+  geom_condim           3 
+  geom_bodyid           1 
+  geom_dataid           -1 
+  geom_matid            -1 
+  geom_group            0 
+  geom_priority         0 
+  geom_plugin           -1 
+  geom_sameframe        1 
+  geom_solmix           1        
+  geom_solref           0.02      1        
+  geom_solimp           0.9       0.95      0.001     0.5       2        
+  geom_size             0.14      0.1       0.04     
+  geom_aabb             0         0         0         0.14      0.1       0.04     
+  geom_rbound           0.18     
+  geom_pos              0         0         0        
+  geom_quat             1         0         0         0        
+  geom_friction         0.8       0.1       0.1      
+  geom_margin           0        
+  geom_gap              0        
+  geom_surfacevel       0         0         0         0         0         0        
+  geom_adhesion         0        
+  geom_fluid            0         0         0         0         0         0         0         0         0         0         0         0        
+  geom_rgba             0.15      0.25      0.8       1        
+
+GEOM 2:
+  name                  arm_x
+  geom_type             3 
+  geom_contype          1 
+  geom_conaffinity      1 
+  geom_condim           3 
+  geom_bodyid           1 
+  geom_dataid           -1 
+  geom_matid            -1 
+  geom_group            0 
+  geom_priority         0 
+  geom_plugin           -1 
+  geom_sameframe        0 
+  geom_solmix           1        
+  geom_solref           0.02      1        
+  geom_solimp           0.9       0.95      0.001     0.5       2        
+  geom_size             0.018     0.45      0        
+  geom_aabb             0         0         0         0.018     0.018     0.47     
+  geom_rbound           0.47     
+  geom_pos              0         0         0        
+  geom_quat             0.71      0        -0.71      0        
+  geom_friction         0.8       0.1       0.1      
+  geom_margin           0        
+  geom_gap              0        
+  geom_surfacevel       0         0         0         0         0         0        
+  geom_adhesion         0        
+  geom_fluid            0         0         0         0         0         0         0         0         0         0         0         0        
+  geom_rgba             0.15      0.15      0.15      1        
+
+GEOM 3:
+  name                  arm_y
+  geom_type             3 
+  geom_contype          1 
+  geom_conaffinity      1 
+  geom_condim           3 
+  geom_bodyid           1 
+  geom_dataid           -1 
+  geom_matid            -1 
+  geom_group            0 
+  geom_priority         0 
+  geom_plugin           -1 
+  geom_sameframe        0 
+  geom_solmix           1        
+  geom_solref           0.02      1        
+  geom_solimp           0.9       0.95      0.001     0.5       2        
+  geom_size             0.018     0.45      0        
+  geom_aabb             0         0         0         0.018     0.018     0.47     
+  geom_rbound           0.47     
+  geom_pos              0         0         0        
+  geom_quat             0.71      0.71      0        -0        
+  geom_friction         0.8       0.1       0.1      
+  geom_margin           0        
+  geom_gap              0        
+  geom_surfacevel       0         0         0         0         0         0        
+  geom_adhesion         0        
+  geom_fluid            0         0         0         0         0         0         0         0         0         0         0         0        
+  geom_rgba             0.15      0.15      0.15      1        
+
+GEOM 4:
+  name                  prop1
+  geom_type             5 
+  geom_contype          0 
+  geom_conaffinity      0 
+  geom_condim           3 
+  geom_bodyid           1 
+  geom_dataid           -1 
+  geom_matid            -1 
+  geom_group            0 
+  geom_priority         0 
+  geom_plugin           -1 
+  geom_sameframe        3 
+  geom_solmix           1        
+  geom_solref           0.02      1        
+  geom_solimp           0.9       0.95      0.001     0.5       2        
+  geom_size             0.13      0.006     0        
+  geom_aabb             0         0         0         0.13      0.13      0.006    
+  geom_rbound           0.13     
+  geom_pos              0.45      0         0.035    
+  geom_quat             1         0         0         0        
+  geom_friction         0.8       0.1       0.1      
+  geom_margin           0        
+  geom_gap              0        
+  geom_surfacevel       0         0         0         0         0         0        
+  geom_adhesion         0        
+  geom_fluid            0         0         0         0         0         0         0         0         0         0         0         0        
+  geom_rgba             0.8       0.8       0.8       0.25     
+
+GEOM 5:
+  name                  prop2
+  geom_type             5 
+  geom_contype          0 
+  geom_conaffinity      0 
+  geom_condim           3 
+  geom_bodyid           1 
+  geom_dataid           -1 
+  geom_matid            -1 
+  geom_group            0 
+  geom_priority         0 
+  geom_plugin           -1 
+  geom_sameframe        3 
+  geom_solmix           1        
+  geom_solref           0.02      1        
+  geom_solimp           0.9       0.95      0.001     0.5       2        
+  geom_size             0.13      0.006     0        
+  geom_aabb             0         0         0         0.13      0.13      0.006    
+  geom_rbound           0.13     
+  geom_pos              0        -0.45      0.035    
+  geom_quat             1         0         0         0        
+  geom_friction         0.8       0.1       0.1      
+  geom_margin           0        
+  geom_gap              0        
+  geom_surfacevel       0         0         0         0         0         0        
+  geom_adhesion         0        
+  geom_fluid            0         0         0         0         0         0         0         0         0         0         0         0        
+  geom_rgba             0.8       0.8       0.8       0.25     
+
+GEOM 6:
+  name                  prop3
+  geom_type             5 
+  geom_contype          0 
+  geom_conaffinity      0 
+  geom_condim           3 
+  geom_bodyid           1 
+  geom_dataid           -1 
+  geom_matid            -1 
+  geom_group            0 
+  geom_priority         0 
+  geom_plugin           -1 
+  geom_sameframe        3 
+  geom_solmix           1        
+  geom_solref           0.02      1        
+  geom_solimp           0.9       0.95      0.001     0.5       2        
+  geom_size             0.13      0.006     0        
+  geom_aabb             0         0         0         0.13      0.13      0.006    
+  geom_rbound           0.13     
+  geom_pos             -0.45      0         0.035    
+  geom_quat             1         0         0         0        
+  geom_friction         0.8       0.1       0.1      
+  geom_margin           0        
+  geom_gap              0        
+  geom_surfacevel       0         0         0         0         0         0        
+  geom_adhesion         0        
+  geom_fluid            0         0         0         0         0         0         0         0         0         0         0         0        
+  geom_rgba             0.8       0.8       0.8       0.25     
+
+GEOM 7:
+  name                  prop4
+  geom_type             5 
+  geom_contype          0 
+  geom_conaffinity      0 
+  geom_condim           3 
+  geom_bodyid           1 
+  geom_dataid           -1 
+  geom_matid            -1 
+  geom_group            0 
+  geom_priority         0 
+  geom_plugin           -1 
+  geom_sameframe        3 
+  geom_solmix           1        
+  geom_solref           0.02      1        
+  geom_solimp           0.9       0.95      0.001     0.5       2        
+  geom_size             0.13      0.006     0        
+  geom_aabb             0         0         0         0.13      0.13      0.006    
+  geom_rbound           0.13     
+  geom_pos              0         0.45      0.035    
+  geom_quat             1         0         0         0        
+  geom_friction         0.8       0.1       0.1      
+  geom_margin           0        
+  geom_gap              0        
+  geom_surfacevel       0         0         0         0         0         0        
+  geom_adhesion         0        
+  geom_fluid            0         0         0         0         0         0         0         0         0         0         0         0        
+  geom_rgba             0.8       0.8       0.8       0.25     
+
+
+SITE 0:
+  name                  motor1_site
+  site_type             5 
+  site_bodyid           1 
+  site_matid            -1 
+  site_group            0 
+  site_sameframe        3 
+  site_size             0.04      0.008     0.005    
+  site_pos              0.45      0         0        
+  site_quat             1         0         0         0        
+  site_rgba             0.9       0.2       0.2       1        
+
+SITE 1:
+  name                  motor2_site
+  site_type             5 
+  site_bodyid           1 
+  site_matid            -1 
+  site_group            0 
+  site_sameframe        3 
+  site_size             0.04      0.008     0.005    
+  site_pos              0        -0.45      0        
+  site_quat             1         0         0         0        
+  site_rgba             0.2       0.9       0.2       1        
+
+SITE 2:
+  name                  motor3_site
+  site_type             5 
+  site_bodyid           1 
+  site_matid            -1 
+  site_group            0 
+  site_sameframe        3 
+  site_size             0.04      0.008     0.005    
+  site_pos             -0.45      0         0        
+  site_quat             1         0         0         0        
+  site_rgba             0.2       0.4       0.9       1        
+
+SITE 3:
+  name                  motor4_site
+  site_type             5 
+  site_bodyid           1 
+  site_matid            -1 
+  site_group            0 
+  site_sameframe        3 
+  site_size             0.04      0.008     0.005    
+  site_pos              0         0.45      0        
+  site_quat             1         0         0         0        
+  site_rgba             0.9       0.7       0.1       1        
+
+
+LIGHT 0:
+  name                  sun
+  light_mode            0 
+  light_bodyid          0 
+  light_targetbodyid    -1 
+  light_type            1 
+  light_texid           -1 
+  light_castshadow      1 
+  light_bulbradius      0.02     
+  light_intensity       0        
+  light_range           10       
+  light_active          1 
+  light_pos             0         0         5        
+  light_dir             0         0        -1        
+  light_poscom0         0         0         4        
+  light_pos0            0         0         5        
+  light_dir0            0         0        -1        
+  light_attenuation     1         0         0        
+  light_cutoff          45       
+  light_exponent        10       
+  light_ambient         0         0         0        
+  light_diffuse         0.7       0.7       0.7      
+  light_specular        0.3       0.3       0.3      
+
+
+ACTUATOR 0:
+  name                  motor1
+  actuator_trntype      4 
+  actuator_dyntype      0 
+  actuator_gaintype     0 
+  actuator_biastype     0 
+  actuator_ctrladr      0 
+  actuator_ctrlnum      1 
+  actuator_ctrlspec     0 
+  actuator_outadr       0 
+  actuator_outnum       1 
+  actuator_actadr       -1 
+  actuator_actnum       0 
+  actuator_trnid        0  -1 
+  actuator_cranklength  0        
+  actuator_dynprm       1         0         0         0         0         0         0         0         0         0        
+  actuator_gainprm      1         0         0         0         0         0         0         0         0         0        
+  actuator_biasprm      0         0         0         0         0         0         0         0         0         0        
+  actuator_actlimited   0 
+  actuator_actrange     0         0        
+  actuator_actearly     0 
+  actuator_history      0  0 
+  actuator_historyadr   -1 
+  actuator_delay        0        
+  actuator_damping      0        
+  actuator_dampingpoly  0         0        
+  actuator_armature     0        
+  actuator_group        0 
+  actuator_plugin       -1 
+  actuator_forcelimited 0 
+  actuator_forcerange   0         0        
+  actuator_ctrllimited  1 
+  actuator_ctrlrange    0         8        
+  actuator_gear         0         0         1         0         0         0.02     
+  actuator_acc0         23       
+  actuator_length0      0        
+  actuator_lengthrange  0         0        
+
+ACTUATOR 1:
+  name                  motor2
+  actuator_trntype      4 
+  actuator_dyntype      0 
+  actuator_gaintype     0 
+  actuator_biastype     0 
+  actuator_ctrladr      1 
+  actuator_ctrlnum      1 
+  actuator_ctrlspec     0 
+  actuator_outadr       1 
+  actuator_outnum       1 
+  actuator_actadr       -1 
+  actuator_actnum       0 
+  actuator_trnid        1  -1 
+  actuator_cranklength  0        
+  actuator_dynprm       1         0         0         0         0         0         0         0         0         0        
+  actuator_gainprm      1         0         0         0         0         0         0         0         0         0        
+  actuator_biasprm      0         0         0         0         0         0         0         0         0         0        
+  actuator_actlimited   0 
+  actuator_actrange     0         0        
+  actuator_actearly     0 
+  actuator_history      0  0 
+  actuator_historyadr   -1 
+  actuator_delay        0        
+  actuator_damping      0        
+  actuator_dampingpoly  0         0        
+  actuator_armature     0        
+  actuator_group        0 
+  actuator_plugin       -1 
+  actuator_forcelimited 0 
+  actuator_forcerange   0         0        
+  actuator_ctrllimited  1 
+  actuator_ctrlrange    0         8        
+  actuator_gear         0         0         1         0         0        -0.02     
+  actuator_acc0         23       
+  actuator_length0      0        
+  actuator_lengthrange  0         0        
+
+ACTUATOR 2:
+  name                  motor3
+  actuator_trntype      4 
+  actuator_dyntype      0 
+  actuator_gaintype     0 
+  actuator_biastype     0 
+  actuator_ctrladr      2 
+  actuator_ctrlnum      1 
+  actuator_ctrlspec     0 
+  actuator_outadr       2 
+  actuator_outnum       1 
+  actuator_actadr       -1 
+  actuator_actnum       0 
+  actuator_trnid        2  -1 
+  actuator_cranklength  0        
+  actuator_dynprm       1         0         0         0         0         0         0         0         0         0        
+  actuator_gainprm      1         0         0         0         0         0         0         0         0         0        
+  actuator_biasprm      0         0         0         0         0         0         0         0         0         0        
+  actuator_actlimited   0 
+  actuator_actrange     0         0        
+  actuator_actearly     0 
+  actuator_history      0  0 
+  actuator_historyadr   -1 
+  actuator_delay        0        
+  actuator_damping      0        
+  actuator_dampingpoly  0         0        
+  actuator_armature     0        
+  actuator_group        0 
+  actuator_plugin       -1 
+  actuator_forcelimited 0 
+  actuator_forcerange   0         0        
+  actuator_ctrllimited  1 
+  actuator_ctrlrange    0         8        
+  actuator_gear         0         0         1         0         0         0.02     
+  actuator_acc0         23       
+  actuator_length0      0        
+  actuator_lengthrange  0         0        
+
+ACTUATOR 3:
+  name                  motor4
+  actuator_trntype      4 
+  actuator_dyntype      0 
+  actuator_gaintype     0 
+  actuator_biastype     0 
+  actuator_ctrladr      3 
+  actuator_ctrlnum      1 
+  actuator_ctrlspec     0 
+  actuator_outadr       3 
+  actuator_outnum       1 
+  actuator_actadr       -1 
+  actuator_actnum       0 
+  actuator_trnid        3  -1 
+  actuator_cranklength  0        
+  actuator_dynprm       1         0         0         0         0         0         0         0         0         0        
+  actuator_gainprm      1         0         0         0         0         0         0         0         0         0        
+  actuator_biasprm      0         0         0         0         0         0         0         0         0         0        
+  actuator_actlimited   0 
+  actuator_actrange     0         0        
+  actuator_actearly     0 
+  actuator_history      0  0 
+  actuator_historyadr   -1 
+  actuator_delay        0        
+  actuator_damping      0        
+  actuator_dampingpoly  0         0        
+  actuator_armature     0        
+  actuator_group        0 
+  actuator_plugin       -1 
+  actuator_forcelimited 0 
+  actuator_forcerange   0         0        
+  actuator_ctrllimited  1 
+  actuator_ctrlrange    0         8        
+  actuator_gear         0         0         1         0         0        -0.02     
+  actuator_acc0         23       
+  actuator_length0      0        
+  actuator_lengthrange  0         0        
+
+B: body-dof matrix
+--------
+ xxxxxx |
+ xxxxxx |
+--------
+
+B_ROWNNZ
+  6 6
+
+B_ROWADR
+  0 6
+
+B_COLIND
+  0 1 2 3 4 5 0 1 2 3 4 5
+
+M: reduced inertia matrix
+--------
+ x      |
+  x     |
+   x    |
+    x   |
+     x  |
+      x |
+--------
+
+M_ROWNNZ
+  1 1 1 1 1 1
+
+M_ROWADR
+  0 1 2 3 4 5
+
+M_COLIND
+  0 1 2 3 4 5
+
+MAPM2M
+  0 1 3 6 10 15
+
+D: dof-dof matrix
+--------
+ Dxxxxx |
+ xDxxxx |
+ xxDxxx |
+ xxxDxx |
+ xxxxDx |
+ xxxxxD |
+--------
+
+D_ROWNNZ
+  6 6 6 6 6 6
+
+D_ROWADR
+  0 6 12 18 24 30
+
+D_COLIND
+  0 1 2 3 4 5 0 1 2 3 4 5 0 1 2 3 4 5 0 1 2 3 4 5 0 1 2 3 4 5 0 1 2 3 4 5
+
+MAPM2D
+  0 -1 -1 -1 -1 -1 -1 1 -1 -1 -1 -1 -1 -1 2 -1 -1 -1 -1 -1 -1 3 -1 -1 -1 -1 -1 -1 4 -1 -1 -1 -1 -1 -1 5
+
+MAPD2M
+  0 7 14 21 28 35
+
+
+SIGNATURE
+  494664356
+
+BVH:
+  id      depth   nodeid  child[0]  child[1]
+  0       0        0      -1        -1
+  1       0       -1       1         2
+  2       1        1      -1        -1
+  3       1       -1       3         4
+  4       2        2      -1        -1
+  5       2        3      -1        -1
+

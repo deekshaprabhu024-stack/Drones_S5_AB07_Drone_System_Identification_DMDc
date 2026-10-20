@@ -1,0 +1,26 @@
+DMDc QUADROTOR MODEL SUMMARY
+==================================================
+
+State dimension      : 8
+Input dimension      : 4
+DMDc Omega rank      : 10
+ROM rank             : 4
+ROM energy retained  : 98.39%
+
+VALIDATION RMSE
+------------------------------
+   z_error : 0.050578
+        vz : 0.109305
+      roll : 0.131917
+     pitch : 0.397319
+       yaw : 0.310916
+         p : 0.312048
+         q : 0.114724
+         r : 0.105954
+
+REDUCED MODEL EIGENVALUES
+------------------------------
++0.980907+0.000000j |lambda|=0.980907
++0.999037+0.000736j |lambda|=0.999038
++0.999037-0.000736j |lambda|=0.999038
++0.999805+0.000000j |lambda|=0.999805

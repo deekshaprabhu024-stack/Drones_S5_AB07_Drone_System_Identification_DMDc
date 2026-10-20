@@ -1,0 +1,18 @@
+DMDc + KOOPMAN QUADROTOR MODEL SUMMARY
+=======================================================
+
+State dimension       : 8
+Input dimension       : 4
+DMDc Omega rank       : 12
+Koopman lifted dim.   : 14
+
+VALIDATION RMSE
+-----------------------------------
+   z_error : DMDc=0.399556, Koopman=0.356897
+        vz : DMDc=0.147744, Koopman=0.204124
+      roll : DMDc=0.053087, Koopman=0.086888
+     pitch : DMDc=0.010512, Koopman=0.010517
+       yaw : DMDc=0.000783, Koopman=0.001007
+         p : DMDc=0.013117, Koopman=0.020833
+         q : DMDc=0.001033, Koopman=0.005925
+         r : DMDc=0.000137, Koopman=0.000223
