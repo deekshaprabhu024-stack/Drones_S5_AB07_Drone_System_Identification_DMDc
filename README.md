@@ -17,343 +17,2288 @@
 
 ---
 
-## Abstract
+### Data-Driven Modeling and Prediction of Quadrotor Dynamics Across Multiple Simulation Environments
 
-This project addresses the problem of data-driven system identification for quadrotor dynamics using **Dynamic Mode Decomposition with Control (DMDc)**. Quadrotors are inherently nonlinear, underactuated, and dynamically coupled systems, which makes deriving a fully analytical model both tedious and often imprecise for practical prediction tasks. Rather than pursuing a first-principles derivation, this project takes a data-driven approach: flight data — consisting of states and control inputs — is collected from simulation, and DMDc is used to approximate the underlying dynamics with a linear discrete-time state-space model of the form
+This project investigates **data-driven system identification of quadrotor dynamics** using Dynamic Mode Decomposition with Control (DMDc). Flight data is collected from different simulation environments and an autopilot Software-In-The-Loop (SITL) setup, then used to identify mathematical models that approximate the relationship between the drone's current state, control inputs, and future state.
 
-$$x(k+1) = Ax(k) + Bu(k)$$
+The primary model is
 
-where $A$ represents the influence of the current system state on the next state, and $B$ represents the influence of the applied control input on the next state.
+$$
+\boxed{x_{k+1}=Ax_k+Bu_k}
+$$
 
-To evaluate the generality of this approach, the same DMDc-based identification workflow is applied across **three different quadrotor environments**: Gym-PyBullet, MuJoCo, and ArduPilot Software-In-The-Loop (SITL). Each environment generates flight data through a different mechanism and uses a different state representation, but all three follow an identical downstream pipeline:
+where \(A\) represents the state-transition dynamics and \(B\) represents the influence of control inputs.
 
-$$\text{Data generation} \rightarrow \text{State/control collection} \rightarrow X, X_{\text{next}}, U \text{ construction} \rightarrow \text{SVD-based DMDc} \rightarrow \text{Identification of } A, B \rightarrow \text{Prediction and validation}$$
+The project explores this workflow across Gym-PyBullet, MuJoCo, Gazebo, and ArduPilot SITL. An additional Drake-based implementation explores extended DMDc, Sparse Identification of Nonlinear Dynamics (SINDy), Kalman filtering, and nonlinear-system validation.
 
-It should be noted that this project identifies the system dynamics only; closed-loop control design (e.g., LQR) is **not** implemented as part of this work and is discussed only as future work.
+The implementations preserve the state representation and control-input conventions of their respective environments rather than forcing every simulator into a single state vector.
 
----
 
-## Introduction
 
-A **quadrotor** is an unmanned aerial vehicle propelled by four rotors, typically arranged in a symmetric cross or "X" configuration. By independently varying the speed of each rotor, a quadrotor can control its vertical thrust as well as its roll, pitch, and yaw moments, allowing it to translate and rotate freely in three-dimensional space.
+## Table of Contents
 
-Modelling quadrotor dynamics accurately is difficult for several reasons:
-
-- The system is **nonlinear**, particularly in how orientation and translational motion interact.
-- The rotational and translational dynamics are **coupled** — a change in orientation (e.g., pitch) directly affects translational acceleration.
-- The full state of a quadrotor spans **six degrees of freedom (6-DOF)**:
-  - **Position** — location in 3D space
-  - **Velocity** — rate of change of position
-  - **Orientation** — roll, pitch, and yaw (attitude)
-  - **Angular velocity** — rate of change of orientation
-
-Traditionally, quadrotor dynamics are derived analytically using Newton-Euler or Lagrangian mechanics, which requires precise knowledge of physical parameters (mass, inertia, drag coefficients, motor thrust curves, etc.) and often makes simplifying assumptions to remain tractable.
-
-**Data-driven system identification** offers an alternative: instead of deriving the dynamics from physics, the model is learned directly from observed input-output data. This is particularly useful when:
-
-- Physical parameters are unknown, hard to measure, or vary across platforms.
-- The underlying dynamics are too complex to derive analytically with sufficient accuracy.
-- A model is needed quickly across multiple platforms/simulators without re-deriving equations of motion for each.
-
----
-
-## Project Objective
-
-- Generate quadrotor flight data across multiple simulation environments.
-- Record system states and corresponding control inputs during flight.
-- Construct the data matrices $X$, $X_{\text{next}}$, and $U$ from recorded flight data.
-- Apply **Dynamic Mode Decomposition with Control (DMDc)** to this data.
-- Use **Singular Value Decomposition (SVD)** for numerically stable computation.
-- Identify the system matrices $A$ and $B$.
-- Construct a discrete-time linear state-space approximation of the quadrotor dynamics.
-- Use the identified model to predict future drone behaviour.
-- Validate the learned model against unseen flight data.
+1. [Abstract](#1-abstract)
+2. [Introduction](#2-introduction)
+3. [Project Objectives](#3-project-objectives)
+4. [System Architecture](#4-system-architecture)
+5. [Quadrotor Dynamics and State Representation](#5-quadrotor-dynamics-and-state-representation)
+6. [DMDc Theory and Mathematical Formulation](#6-dmdc-theory-and-mathematical-formulation)
+7. [Simulation Environments and Implementations](#7-simulation-environments-and-implementations)
+8. [Experimental Results](#8-experimental-results)
+9. [Validation Methodology](#9-validation-methodology)
+10. [Limitations](#10-limitations)
+11. [Future Work](#11-future-work)
+12. [Repository Structure](#12-repository-structure)
+13. [Installation and Execution](#13-installation-and-execution)
+14. [Technologies and Libraries](#14-technologies-and-libraries)
+15. [References](#15-references)
+16. [Conclusion](#16-conclusion)
 
 ---
 
-## Quadrotor Dynamics
+# 1. Abstract
 
-The full dynamic state of a quadrotor can be described using:
+Quadrotors are nonlinear, underactuated, and dynamically coupled systems. Their motion depends on the interaction between translational dynamics, rotational dynamics, gravity, and the forces generated by individual rotors. Developing an accurate analytical model requires detailed knowledge of physical parameters and the relationships between motor commands and vehicle motion.
 
-**Position:**
-$$[x, y, z]$$
+This project investigates an alternative approach based on **data-driven system identification**. Instead of deriving every equation of motion from first principles, the model is estimated from recorded state transitions and control inputs.
 
-**Velocity:**
-$$[v_x, v_y, v_z]$$
+The principal identification method is Dynamic Mode Decomposition with Control (DMDc). Given consecutive state measurements and corresponding control inputs, DMDc estimates the matrices \(A\) and \(B\) of a discrete-time state-space model:
 
-**Orientation:**
-$$[\text{Roll}, \text{Pitch}, \text{Yaw}]$$
+$$
+x_{k+1}=Ax_k+Bu_k
+$$
 
-**Angular velocity:**
-$$[p, q, r]$$
+The methodology is explored across multiple environments, each providing a different perspective on quadrotor dynamics.
 
-Not every simulation environment records or exposes all of these quantities in the same form. Depending on the internal representation and sensor/logging capabilities of each simulator, different subsets or parameterizations (e.g., Euler angles vs. quaternions) of this full state are used. This project does **not** force a common state vector across environments — each environment's natural state representation is preserved.
+* **Gym-PyBullet:** PID-controlled flight experiments using position and velocity states.
+* **MuJoCo:** Manually controlled quadrotor experiments using altitude, attitude, and angular-rate states.
+* **Gazebo Harmonic with ROS 2 Jazzy:** PID-controlled flight, actuator commands, and translational-state identification.
+* **ArduPilot SITL:** Data-driven identification using recorded DataFlash flight logs.
+* **Drake:** Full-state quadrotor simulation, DMDc and EDMDc, SINDy, nonlinear-system validation, and Kalman filtering.
 
----
+The identified models are evaluated using prediction-versus-measurement comparisons, root mean squared error (RMSE), trajectory plots, and, where implemented, eigenvalue analysis.
 
-## State Representation
+The project also investigates nonlinear feature representations and state estimation to understand how the basic DMDc framework can be extended beyond a purely linear model.
 
-State representation is simulator-dependent.
+**Primary objective:** To investigate how effectively mathematical models of quadrotor dynamics can be identified from simulated flight data and used to predict subsequent system behaviour.
 
-### Gym-PyBullet
-
-$$x = [x, y, z, v_x, v_y, v_z]^T$$
-
-Six states:
-- $x$ position
-- $y$ position
-- $z$ position
-- $x$ velocity
-- $y$ velocity
-- $z$ velocity
-
-### MuJoCo
-
-Uses an attitude-based state representation:
-
-$$x = [z_{\text{error}}, v_z, \text{roll}, \text{pitch}, \text{yaw}, p, q, r]^T$$
-
-Eight states.
-
-### ArduPilot
-
-Uses flight-log-based attitude information, including quaternion/attitude data and angular-rate information extracted from DataFlash logs.
+**Scope:** This project focuses on system identification, model prediction, and validation. Although an LQR controller is used within the Drake simulation to generate controlled trajectories, a controller designed from the learned DMDc model and validated as a complete closed-loop control system remains future work.
 
 ---
 
-## Control Input
+# 2. Introduction
 
-The quadrotor is actuated via its four motors. In general form:
+A quadrotor is an unmanned aerial vehicle propelled by four independently controlled rotors. By varying the thrust generated by individual motors, the vehicle can change its altitude, orientation, and horizontal motion.
 
-$$u = [u_1, u_2, u_3, u_4]^T$$
+Its motion can be described using six degrees of freedom:
 
-These four components represent the individual motor commands. Depending on the simulation environment, these values may represent:
+* **Position:** Location along the three spatial axes.
+* **Linear velocity:** Rate of change of position.
+* **Orientation:** Roll, pitch, and yaw.
+* **Angular velocity:** Rotational rates about the body axes.
 
-- Motor **RPM**
-- Normalized **actuator commands**
-- Raw **motor output** signals
+The dynamics are challenging to model accurately because translational and rotational motion are coupled. For example, a change in pitch alters the direction of the resultant thrust and therefore changes horizontal acceleration.
 
----
+Traditional modeling approaches often use Newton-Euler or Lagrangian mechanics. These approaches require physical parameters such as mass, inertia, aerodynamic coefficients, and motor characteristics.
 
-## Methodology
+Data-driven system identification instead uses observed system behaviour to estimate a mathematical model.
 
-This section describes the complete end-to-end workflow used to go from raw flight data to a validated, identified dynamical model.
+For this project, the general workflow is:
 
-### 1. Data Generation
+$$
+\text{Data Collection}
+\rightarrow
+\text{Preprocessing}
+\rightarrow
+\text{System Identification}
+\rightarrow
+\text{Model Validation}
+$$
 
-In each environment, the drone is simulated (or, in ArduPilot's case, flown in SITL) while control inputs are applied and the resulting states are recorded. Each collected sample takes the form of a state-input-nextstate triplet:
+The same underlying DMDc formulation is applied across multiple environments, but the state variables, actuator representations, data sources, and validation procedures remain simulator-dependent.
 
-$$(x_k, u_k, x_{k+1})$$
-
-The mechanism for generating this data differs across environments, as described below.
-
-#### Gym-PyBullet Implementation
-
-- Simulated using the **PyBullet** physics engine.
-- A dedicated drone environment provides physics stepping and state feedback.
-- Flight is generated using **PID-based control**.
-- Target positions/trajectories are generated to drive the PID controller.
-- Motor commands are issued as **RPM values**.
-- States and inputs are recorded at each simulation step.
-
-Flight sequence used for data generation:
-
-$$\text{Takeoff} \rightarrow \text{Hover} \rightarrow \text{Move along X} \rightarrow \text{Move along Y} \rightarrow \text{Return} \rightarrow \text{Land}$$
-
-- **State:** $[x, y, z, v_x, v_y, v_z]$
-- **Input:** four motor RPM values
-
-#### MuJoCo Implementation
-
-- Simulated using the **MuJoCo** physics engine with a six-degree-of-freedom quadrotor model.
-- Movement is driven using manually specified commands.
-- An attitude controller converts these high-level commands into individual motor inputs.
-- State and motor data are collected throughout simulation.
-
-- **State:** $[z_{\text{error}}, v_z, \text{roll}, \text{pitch}, \text{yaw}, p, q, r]$
-- **Input:** four motor commands
-
-Following data collection, this environment is used to demonstrate:
-- DMDc-based identification
-- Prediction over held-out trajectories
-- Validation against unseen flight data
-- Eigenvalue analysis of the identified $A$ matrix
-
-*(Note: LQR control is not implemented in this environment or elsewhere in this project.)*
-
-#### ArduPilot Implementation
-
-- Flight data is generated using **ArduPilot Software-In-The-Loop (SITL)**.
-- Data is extracted from **DataFlash logs** produced during SITL flight.
-- Extracted signals are processed and time-synchronized.
-- State and motor/control information are collected from the synchronized logs.
-
-Pipeline:
-
-$$\text{DataFlash logs} \rightarrow \text{Signal extraction} \rightarrow \text{Preprocessing} \rightarrow X, X_{\text{next}}, U \rightarrow \text{DMDc}$$
-
-- **State:** quaternion/attitude information and angular rates
-- **Input:** motor output information
+This makes it possible to study both the usefulness and the limitations of learning quadrotor dynamics from different sources of simulated flight data.
 
 ---
 
-## DMDc Theory
+# 3. Project Objectives
 
-Dynamic Mode Decomposition with Control begins from the assumption of an underlying discrete-time linear (or locally linear) dynamical system:
+The principal objectives are:
 
-$$x(k+1) = Ax(k) + Bu(k)$$
-
-- $A$ captures the effect of the **current state** on the **next state**.
-- $B$ captures the effect of the **control input** on the **next state**.
-
-Given a dataset of consecutive state and input snapshots, this relationship can be written in matrix form as:
-
-$$X_{\text{next}} = AX + BU$$
-
-To solve for $A$ and $B$ simultaneously, the state and input snapshots are stacked into a single augmented matrix:
-
-$$\Omega = \begin{bmatrix} X \\ U \end{bmatrix}$$
-
-and the combined operator is defined as:
-
-$$G = \begin{bmatrix} A & B \end{bmatrix}$$
-
-so that:
-
-$$X_{\text{next}} \approx G\Omega$$
-
-DMDc then solves for $G$ using the Moore-Penrose pseudoinverse of $\Omega$:
-
-$$G = X_{\text{next}} \Omega^{\dagger}$$
+1. Generate quadrotor flight data using multiple simulation environments.
+2. Record the system states and the corresponding control inputs.
+3. Construct consecutive state and input snapshot matrices from the collected data.
+4. Implement Dynamic Mode Decomposition with Control for identifying system dynamics.
+5. Estimate the state-transition matrix \(A\) and input matrix \(B\).
+6. Investigate singular value decomposition and model-order selection where supported by the implementation.
+7. Evaluate learned models using one-step and multi-step predictions.
+8. Compare predicted trajectories against actual simulated trajectories or recorded flight measurements.
+9. Examine model behaviour through RMSE, trajectory plots, singular values, and eigenvalue diagnostics.
+10. Explore nonlinear feature lifting and sparse equation identification using the Drake experiments.
+11. Investigate Kalman filtering for state estimation under simulated measurement noise.
+12. Identify the limitations of linear models and determine potential improvements for future data-driven control applications.
 
 ---
 
-## Singular Value Decomposition (SVD)
+# 4. System Architecture
 
-Rather than computing the pseudoinverse of $\Omega$ directly (which can be numerically unstable, especially for ill-conditioned or high-dimensional data), DMDc uses the **Singular Value Decomposition**:
+The project follows a common system-identification workflow, with separate data-generation and preprocessing procedures for each environment.
 
-$$\Omega = U \Sigma V^T$$
+## 4.1 Overall Architecture
+
+```mermaid
+flowchart TD
+    A["Quadrotor Data Generation"]
+
+    A --> B["Gym-PyBullet"]
+    A --> C["MuJoCo"]
+    A --> D["Gazebo + ROS 2"]
+    A --> E["ArduPilot SITL"]
+    A --> F["Drake Simulation"]
+
+    B --> G["State and Control Logging"]
+    C --> G
+    D --> G
+    E --> H["DataFlash Extraction and Synchronization"]
+    F --> G
+
+    H --> I["Preprocessed State-Input Data"]
+    G --> I
+
+    I --> J["Construct X, X_next and U"]
+    J --> K["DMDc Identification"]
+    K --> L["Estimate A and B"]
+    L --> M["One-Step or Multi-Step Prediction"]
+    M --> N["Validation and Error Analysis"]
+
+    F -.-> O["EDMDc, SINDy and Kalman Filtering"]
+    O --> N
+
+    classDef source fill:#dbeafe,stroke:#2563eb,color:#111827;
+    classDef core fill:#dcfce7,stroke:#16a34a,color:#111827;
+    classDef output fill:#fef3c7,stroke:#d97706,color:#111827;
+
+    class A,B,C,D,E,F source;
+    class G,H,I,J,K,L,M core;
+    class N,O output;
+```
+
+## 4.2 Common Identification Pipeline
+
+Each DMDc implementation follows the same basic stages.
+
+### Stage 1: Generate Flight Data
+
+The quadrotor is simulated, controlled, or observed through an autopilot SITL environment.
+
+The control mechanism varies between implementations:
+
+* PID-based reference tracking in Gym-PyBullet.
+* Manual commands in MuJoCo.
+* PID-based flight control in Gazebo.
+* The native ArduPilot flight controller in SITL.
+* LQR-controlled circular trajectory tracking in Drake.
+
+### Stage 2: Collect State and Input Measurements
+
+The system records a sequence of states and their corresponding control inputs.
+
+A sample is represented by
+
+$$
+(x_k,u_k,x_{k+1})
+$$
 
 where:
 
-- $U$ — matrix of **left singular vectors**
-- $\Sigma$ — diagonal matrix of **singular values**
-- $V$ — matrix of **right singular vectors**
+* \(x_k\) is the current state.
+* \(u_k\) is the control input applied at the current step.
+* \(x_{k+1}\) is the next state.
 
-SVD is used because it provides:
+The state variables differ between platforms.
 
-- **Numerical stability** when computing pseudoinverses
-- A well-conditioned way to compute the **pseudoinverse**
-- The ability to perform **rank selection** (retaining only the most significant modes)
-- **Dimensionality reduction**, discarding directions dominated by noise or negligible energy
+### Stage 3: Preprocess the Data
 
-A **truncated SVD** retains only the top $r$ singular values/vectors:
+Depending on the environment, preprocessing may involve:
 
-$$\Omega \approx U_r \Sigma_r V_r^T$$
+* Extracting measurements from simulation or flight logs.
+* Synchronizing measurements with different timestamps.
+* Constructing consistent current-state and next-state pairs.
+* Transforming actuator outputs into the input coordinates used by the model.
+* Standardizing variables.
+* Dividing data into training and validation sets.
 
----
+### Stage 4: Identify the Model
 
-## DMDc Derivation
+DMDc uses the collected state transitions and control inputs to estimate \(A\) and \(B\).
 
-Starting from the truncated SVD of the augmented data matrix:
+### Stage 5: Validate the Model
 
-$$\Omega \approx U_r \Sigma_r V_r^T$$
+The identified model predicts future states. Predictions are compared against measured states using error metrics and visualization.
 
-the pseudoinverse of $\Omega$ can be written as:
-
-$$\Omega^{\dagger} = V_r \Sigma_r^{-1} U_r^T$$
-
-Substituting into the expression for $G$:
-
-$$G = X_{\text{next}} V_r \Sigma_r^{-1} U_r^T$$
-
-Since:
-
-$$G = \begin{bmatrix} A & B \end{bmatrix}$$
-
-the resulting matrix $G$ is split column-wise (according to the number of state dimensions vs. input dimensions used to build $\Omega$) to recover $A$ and $B$ individually.
+The precise validation method depends on the implementation. Some pipelines perform one-step prediction using measured current states, whereas others recursively propagate their own predictions across an entire validation trajectory.
 
 ---
 
-## Prediction
+# 5. Quadrotor Dynamics and State Representation
 
-Once $A$ and $B$ have been identified, the model can be used to predict future states.
+## 5.1 General State Description
 
-**One-step prediction:**
+A complete quadrotor state can be described using position, linear velocity, orientation, and angular velocity:
 
-$$\hat{x}(k+1) = A\hat{x}(k) + Bu(k)$$
+$$
+x_{\mathrm{full}}=
+\begin{bmatrix}
+x&y&z&
+v_x&v_y&v_z&
+\phi&\theta&\psi&
+p&q&r
+\end{bmatrix}^{T}
+$$
 
-**Multi-step prediction:** the predicted output at each step is fed back in as the input state for the next prediction step, i.e., $\hat{x}(k)$ is replaced by the model's own previous prediction rather than the true measured state. This allows the model to be rolled forward over a full trajectory, but also means prediction errors can **accumulate** over successive steps, since each prediction depends on the accuracy of the one before it.
+where:
+
+| Variable        | Description                                     |
+| --------------- | ----------------------------------------------- |
+| \(x,y,z\)       | Position along the three spatial axes           |
+| \(v_x,v_y,v_z\) | Linear velocity components                      |
+| \(\phi\)        | Roll angle                                      |
+| \(\theta\)      | Pitch angle                                     |
+| \(\psi\)        | Yaw angle                                       |
+| \(p,q,r\)       | Angular velocity components about the body axes |
+
+Not every implementation uses all twelve variables.
+
+A smaller state can be easier to estimate and interpret, but it may also omit dynamics that are important for accurately predicting the system.
+
+## 5.2 State Representation Across Environments
+
+| Environment    | State Vector                                                                   | State Dimension |
+| -------------- | ------------------------------------------------------------------------------ | --------------: |
+| Gym-PyBullet   | \([x,y,z,v_x,v_y,v_z]^T\)                                                      |               6 |
+| Gazebo         | \([x,y,z,v_x,v_y,v_z]^T\)                                                      |               6 |
+| MuJoCo         | \([z_{\mathrm{error}},v_z,\mathrm{roll},\mathrm{pitch},\mathrm{yaw},p,q,r]^T\) |               8 |
+| ArduPilot SITL | \([q_0,q_1,q_2,q_3,\omega_x,\omega_y,\omega_z]^T\)                             |               7 |
+| Drake          | \([x,y,z,\phi,\theta,\psi,v_x,v_y,v_z,\omega_x,\omega_y,\omega_z]^T\)          |              12 |
+
+The ArduPilot implementation represents orientation using four quaternion components rather than three Euler angles.
+
+The MuJoCo implementation focuses on vertical motion, attitude, and angular rates, whereas Gym-PyBullet and Gazebo use a six-dimensional translational state for DMDc.
+
+**These state representations are intentionally different.** A common system-identification method does not require every implementation to use the same state vector.
+
+## 5.3 Control Input
+
+In general, a quadrotor has four independently controlled motors.
+
+The input vector is
+
+$$
+u_k=
+\begin{bmatrix}
+u_1&u_2&u_3&u_4
+\end{bmatrix}^{T}
+$$
+
+The physical meaning of these values depends on the simulator.
+
+They may represent:
+
+* Rotor RPM values.
+* Motor thrust commands.
+* Actuator speed commands.
+* Raw motor output signals.
+* Transformed coordinates derived from individual motor outputs.
+
+These inputs should not automatically be treated as physically interchangeable. For example, a raw motor-output channel is not necessarily equal to actual motor RPM or physical thrust.
+
+## 5.4 State Dimension and Model Matrices
+
+For a system with \(n\) state variables and \(m\) control inputs,
+
+$$
+A\in\mathbb{R}^{n\times n}
+$$
+
+and
+
+$$
+B\in\mathbb{R}^{n\times m}
+$$
+
+The main implementations therefore estimate matrices with the following dimensions:
+
+| Environment    | \(A\) Matrix   | \(B\) Matrix  |
+| -------------- | -------------- | ------------- |
+| Gym-PyBullet   | \(6\times6\)   | \(6\times4\)  |
+| Gazebo         | \(6\times6\)   | \(6\times4\)  |
+| MuJoCo         | \(8\times8\)   | \(8\times4\)  |
+| ArduPilot SITL | \(7\times7\)   | \(7\times4\)  |
+| Drake DMDc     | \(12\times12\) | \(12\times4\) |
+
+The Drake EDMDc implementation additionally operates in a lifted feature space.
 
 ---
 
-## Validation
+# 6. DMDc Theory and Mathematical Formulation
 
-- **Training data** — used to compute $A$ and $B$ via DMDc.
-- **Validation data** — a separate, unseen trajectory used to test the learned model's predictive accuracy.
+## 6.1 The Discrete-Time State-Space Model
 
-Validation is performed by comparing:
+Dynamic Mode Decomposition with Control approximates the system dynamics using
 
-$$\text{Actual trajectory} \quad \text{vs.} \quad \text{DMDc-predicted trajectory}$$
+$$
+\boxed{x_{k+1}=Ax_k+Bu_k}
+$$
+
+The matrices describe two relationships.
+
+**State-transition matrix \(A\)**
+
+$$
+Ax_k
+$$
+
+captures how the current state contributes to the next state.
+
+**Input matrix \(B\)**
+
+$$
+Bu_k
+$$
+
+captures how the control inputs influence the next state.
+
+The matrices are estimated from recorded data rather than assumed to be known beforehand.
+
+The resulting model is a linear or locally linear approximation of the underlying dynamics. It does not imply that a real quadrotor is globally linear.
+
+## 6.2 Constructing the Snapshot Matrices
+
+Suppose \(N\) consecutive state transitions have been collected.
+
+Using a column-based mathematical convention, construct the current-state matrix:
+
+$$
+X=
+\begin{bmatrix}
+x_0&x_1&\cdots&x_{N-1}
+\end{bmatrix}
+$$
+
+The corresponding next-state matrix is
+
+$$
+X_{\mathrm{next}}=
+\begin{bmatrix}
+x_1&x_2&\cdots&x_N
+\end{bmatrix}
+$$
+
+The control-input matrix is
+
+$$
+U=
+\begin{bmatrix}
+u_0&u_1&\cdots&u_{N-1}
+\end{bmatrix}
+$$
+
+For \(n\) state variables and \(m\) inputs,
+
+$$
+X,X_{\mathrm{next}}\in\mathbb{R}^{n\times N}
+$$
+
+and
+
+$$
+U\in\mathbb{R}^{m\times N}
+$$
+
+The same dataset can be stored with samples as rows in a CSV or NumPy array. The implementation then arranges or transposes the data as required by the identification equations.
+
+## 6.3 Augmented Regression Matrix
+
+The DMDc model requires the state and control input to be considered together.
+
+They are stacked into the augmented matrix:
+
+$$
+\Omega=
+\begin{bmatrix}
+X\\
+U
+\end{bmatrix}
+$$
+
+The state-transition equation becomes
+
+$$
+X_{\mathrm{next}}=AX+BU
+$$
+
+Define the combined operator
+
+$$
+G=
+\begin{bmatrix}
+A&B
+\end{bmatrix}
+$$
+
+Then
+
+$$
+X_{\mathrm{next}}\approx G\Omega
+$$
+
+This converts the identification problem into a least-squares regression problem.
+
+## 6.4 Estimating the System Matrices
+
+The combined operator can be estimated using the Moore-Penrose pseudoinverse:
+
+$$
+\boxed{G=X_{\mathrm{next}}\Omega^\dagger}
+$$
+
+where \(\Omega^\dagger\) is the pseudoinverse of the augmented matrix.
+
+Once \(G\) has been estimated, it is divided into two parts:
+
+$$
+G=
+\begin{bmatrix}
+A&B
+\end{bmatrix}
+$$
+
+The first \(n\) columns form \(A\), and the remaining \(m\) columns form \(B\).
+
+This produces the required state-space model.
+
+## 6.5 Singular Value Decomposition
+
+Singular Value Decomposition (SVD) is useful when estimating the pseudoinverse of the augmented matrix.
+
+The decomposition is
+
+$$
+\Omega=U_\Omega\Sigma V^T
+$$
+
+where:
+
+* \(U_\Omega\) contains left singular vectors.
+* \(\Sigma\) contains singular values.
+* \(V\) contains right singular vectors.
+
+When a truncated decomposition is used,
+
+$$
+\Omega\approx U_r\Sigma_rV_r^T
+$$
+
+the corresponding pseudoinverse approximation is
+
+$$
+\Omega^\dagger\approx
+V_r\Sigma_r^{-1}U_r^T
+$$
+
+The estimated operator becomes
+
+$$
+G\approx
+X_{\mathrm{next}}V_r\Sigma_r^{-1}U_r^T
+$$
+
+Truncation retains selected singular directions and discards others. It can reduce the influence of poorly conditioned directions, but an excessively low rank may remove important system dynamics.
+
+The project uses different numerical implementations across its branches. Some explicitly use SVD-based identification and rank selection, while others use NumPy's pseudoinverse, which itself relies on SVD-based numerical computation. These implementations should not be assumed to use identical rank-truncation settings.
+
+## 6.6 Model Prediction
+
+Once the matrices have been identified, the predicted state is
+
+$$
+\boxed{\hat{x}_{k+1}=A\hat{x}_k+Bu_k}
+$$
+
+There are two important prediction modes.
+
+### One-Step-Ahead Prediction
+
+The actual measured state at time \(k\) and the corresponding input are used to predict the next state.
+
+$$
+\hat{x}_{k+1}=Ax_k+Bu_k
+$$
+
+This evaluates the model's ability to predict a single state transition.
+
+### Recursive Multi-Step Prediction
+
+The predicted state is fed back into the model:
+
+$$
+\hat{x}_{k+1}=A\hat{x}_k+Bu_k
+$$
+
+$$
+\hat{x}_{k+2}=A\hat{x}_{k+1}+Bu_{k+1}
+$$
+
+The process continues across the validation trajectory.
+
+Recursive prediction is more demanding because errors can accumulate at every step. A model that predicts individual transitions accurately may still diverge during a long open-loop rollout.
+
+## 6.7 Model Evaluation
+
+The principal error metric used in the project is Root Mean Squared Error.
+
+$$
+\operatorname{RMSE}=
+\sqrt{\frac{1}{N}\sum_{i=1}^{N}(x_i-\hat{x}_i)^2}
+$$
+
+where:
+
+* \(x_i\) is the actual value.
+* \(\hat{x}_i\) is the predicted value.
+* \(N\) is the number of evaluated samples.
+
+A smaller RMSE indicates a closer numerical match between predictions and measurements for the quantity being evaluated.
+
+RMSE must be interpreted in the context of the state variable, its units, the model's scaling, and the evaluation method. Values from different state representations or feature spaces are not automatically comparable.
 
 ---
 
-## Error Metric
+# 7. Simulation Environments and Implementations
 
-Model accuracy is quantified using **Root Mean Squared Error (RMSE)**:
+## 7.1 Gym-PyBullet Implementation
 
-$$\text{RMSE} = \sqrt{\frac{1}{N}\sum_{i=1}^{N}(y_i - \hat{y}_i)^2}$$
+**Directory:** `Gympybullet/`
 
-where $y_i$ is the actual (measured) value, $\hat{y}_i$ is the predicted value, and $N$ is the number of samples. A lower RMSE indicates that the predicted trajectory more closely matches the actual trajectory.
+The Gym-PyBullet implementation uses the `gym-pybullet-drones` framework and the PyBullet physics engine to generate controlled quadrotor flight data.
+
+The flight experiments use PID-based reference tracking, and the recorded state and input sequences are used for SVD-based DMDc identification.
+
+### 7.1.1 Flight Data Generation
+
+The PID controller tracks reference positions and stabilizes the simulated drone.
+
+The workflow includes a sequence of takeoff, hovering, horizontal movement, return, and landing.
+
+The simulation records the drone's translational state and the corresponding motor RPM values.
+
+### 7.1.2 State and Input Representation
+
+The DMDc state is
+
+$$
+x=
+\begin{bmatrix}
+x&y&z&v_x&v_y&v_z
+\end{bmatrix}^{T}
+$$
+
+The input is
+
+$$
+u=
+\begin{bmatrix}
+u_1&u_2&u_3&u_4
+\end{bmatrix}^{T}
+$$
+
+where the four inputs correspond to individual motor RPM values.
+
+Consequently,
+
+$$
+A\in\mathbb{R}^{6\times6}
+$$
+
+and
+
+$$
+B\in\mathbb{R}^{6\times4}
+$$
+
+### 7.1.3 DMDc Identification
+
+The recorded flight trajectory is used to construct the state-transition and input matrices.
+
+The identification implementation uses SVD-based DMDc with model-order selection.
+
+The objective is to learn the translational dynamics from the recorded motor commands and associated state transitions.
+
+### 7.1.4 Generated Outputs
+
+The implementation records flight data and generates an identified model and prediction plots.
+
+The documented project outputs include:
+
+| File                                   | Purpose                                           |
+| -------------------------------------- | ------------------------------------------------- |
+| `data/pid_dmdc_log.csv`                | Recorded PID-controlled flight trajectory         |
+| `results/dmdc_model.npz`               | Saved identified matrices \(A\) and \(B\)         |
+| `results/dmdc_position_prediction.png` | Position prediction versus ground truth           |
+| `results/dmdc_velocity_prediction.png` | Velocity prediction versus ground truth           |
+| `results/dmdc_singular_values.png`     | Singular-value spectrum for model-order selection |
+
+The model is evaluated against held-out test data.
+
+The implementation demonstrates the complete identification workflow using position and velocity measurements. It does not use the MuJoCo or ArduPilot state representation.
 
 ---
 
-## Comparison Across Environments
+## 7.2 MuJoCo Implementation
 
-| Aspect | Gym-PyBullet | MuJoCo | ArduPilot |
-|---|---|---|---|
-| **Environment** | PyBullet physics simulation | MuJoCo physics simulation | ArduPilot SITL |
-| **Data source** | Simulated flight episodes | Simulated flight episodes | DataFlash flight logs |
-| **Controller / data generation** | PID-based control | Manual commands + attitude controller | Native ArduPilot flight controller |
-| **State representation** | $[x,y,z,v_x,v_y,v_z]$ | $[z_{\text{error}},v_z,\text{roll},\text{pitch},\text{yaw},p,q,r]$ | Quaternion/attitude + angular rates |
-| **Control input** | 4 motor RPM values | 4 motor commands | Motor output information |
-| **DMDc usage** | Identification of $A$, $B$ | Identification of $A$, $B$ | Identification of $A$, $B$ |
-| **Validation method** | Held-out trajectory comparison | Held-out trajectory + eigenvalue analysis | Held-out log segment comparison |
+**Directory:** `DMDc_Quadrotor_MuJoCo/`
+
+The MuJoCo implementation focuses on identifying the quadrotor's vertical and rotational dynamics from manually controlled simulated flight data.
+
+Unlike the translational-state formulation used in Gym-PyBullet, this implementation includes altitude error, attitude, and body angular rates.
+
+### 7.2.1 Simulation and Data Collection
+
+The quadrotor is represented using the MuJoCo model defined in `quadrotor.xml`.
+
+The simulation supports manually specified movement commands. Keyboard commands are converted through the control logic into individual motor commands.
+
+The collection workflow records the time, state variables, and actual motor inputs applied to the MuJoCo simulation.
+
+The nominal hover motor value is approximately **2.4525** for the configured 1 kg quadrotor model.
+
+### 7.2.2 State Representation
+
+The state vector is
+
+$$
+x=
+\begin{bmatrix}
+z_{\mathrm{error}}&
+v_z&
+\mathrm{roll}&
+\mathrm{pitch}&
+\mathrm{yaw}&
+p&q&r
+\end{bmatrix}^{T}
+$$
+
+The eight components are:
+
+| Variable  | Description                                 |
+| --------- | ------------------------------------------- |
+| `z_error` | Altitude error                              |
+| `vz`      | Vertical velocity                           |
+| `roll`    | Roll angle                                  |
+| `pitch`   | Pitch angle                                 |
+| `yaw`     | Yaw angle                                   |
+| `p`       | Angular velocity about the first body axis  |
+| `q`       | Angular velocity about the second body axis |
+| `r`       | Angular velocity about the third body axis  |
+
+The four motor commands form the control vector:
+
+$$
+u=
+\begin{bmatrix}
+u_1&u_2&u_3&u_4
+\end{bmatrix}^{T}
+$$
+
+The corresponding model dimensions are
+
+$$
+A\in\mathbb{R}^{8\times8}
+$$
+
+$$
+B\in\mathbb{R}^{8\times4}
+$$
+
+### 7.2.3 Training and Independent Validation
+
+The current experiment uses separate training and validation datasets:
+
+* `manual_training.csv` — used to identify the DMDc model.
+* `manual_validation.csv` — used for independent validation.
+
+The training dataset is used to estimate \(A\) and \(B\). The learned model is then recursively applied to the validation input sequence.
+
+The predicted states are compared against the actual MuJoCo trajectory.
+
+This evaluates the model's ability to reproduce the observed state evolution beyond the samples used for identification.
+
+### 7.2.4 Prediction and Evaluation
+
+The model predicts successive states using
+
+$$
+\hat{x}_{k+1}=A\hat{x}_k+Bu_k
+$$
+
+The predicted and actual trajectories are compared for all eight state variables.
+
+The validation pipeline produces individual prediction comparisons and reports RMSE values.
+
+### 7.2.5 Current Validation Results
+
+The current eight-state DMDc model produced the following reported validation RMSE values.
+
+| State Variable |   RMSE |
+| -------------- | -----: |
+| `z_error`      | 0.1235 |
+| `vz`           | 0.0102 |
+| `roll`         | 0.0077 |
+| `pitch`        | 0.0085 |
+| `yaw`          | 0.0371 |
+| `p`            | 0.0052 |
+| `q`            | 0.0083 |
+| `r`            | 0.0110 |
+
+These values describe the reported MuJoCo validation experiment. They are not directly comparable to RMSE values from another environment unless the state representation, units, preprocessing, prediction horizon, and evaluation procedure are aligned.
+
+### 7.2.6 Model-Order Investigation
+
+An initial rank-4 model was evaluated.
+
+Independent validation indicated that important dynamics were lost when the model order was reduced to four. The current implementation therefore retains all eight state dimensions.
+
+This illustrates why a model-order decision should be based on validation performance and the dynamics that need to be represented, rather than dimensionality reduction alone.
+
+### 7.2.7 Main Files
+
+| File                      | Purpose                                                 |
+| ------------------------- | ------------------------------------------------------- |
+| `quadrotor.xml`           | MuJoCo quadrotor model                                  |
+| `manual_control.py`       | Manual flight control and data collection               |
+| `dmdc_manual_pipeline.py` | Main DMDc identification and validation pipeline        |
+| `dmdc_pipeline.py`        | Earlier DMDc baseline implementation                    |
+| `inspect_model.py`        | MuJoCo model inspection                                 |
+| `run_simulation.py`       | Simulation utility                                      |
+| `data/`                   | Training and validation datasets                        |
+| `results/`                | Identified model outputs, metrics, and prediction plots |
+
+LQR control is not implemented in this MuJoCo branch.
 
 ---
 
-## Limitations
+## 7.3 Gazebo Harmonic and ROS 2 Jazzy Implementation
 
-- Quadrotor dynamics are fundamentally **nonlinear**, while DMDc produces a **linear approximation** of the system.
-- The quality of the identified model is directly dependent on the **quality and diversity of the collected data**.
-- Models identified purely in simulation are subject to a **simulation-to-real gap** and may not transfer directly to physical hardware.
-- **Limited or narrow trajectories** used during data collection may reduce the model's ability to generalize to maneuvers outside the training distribution.
+**ROS 2 package:** `quad_dmdc_sim`
+
+The Gazebo implementation uses Gazebo Harmonic and ROS 2 Jazzy to simulate a quadrotor, execute a PID-controlled flight, collect state and actuator data, and identify a translational dynamics model using DMDc.
+
+### 7.3.1 Simulation Environment
+
+The implementation targets:
+
+* Ubuntu 24.04.
+* ROS 2 Jazzy.
+* Gazebo Harmonic.
+* Python 3.
+* NumPy and Matplotlib for numerical processing and plotting.
+
+The package is named `quad_dmdc_sim`.
+
+The workflow is
+
+$$
+\begin{aligned}
+&\text{PID-Controlled Flight}\\
+&\quad\downarrow\\
+&\text{Gazebo State and Motor Logging}\\
+&\quad\downarrow\\
+&X,\ X_{\mathrm{next}},\ U\\
+&\quad\downarrow\\
+&\text{SVD-Based DMDc}\\
+&\quad\downarrow\\
+&A,\ B\\
+&\quad\downarrow\\
+&\text{Multi-Step Prediction and RMSE}
+\end{aligned}
+$$
+
+### 7.3.2 Flight Controller
+
+The PID controller internally uses the full vehicle pose and associated state information to stabilize the drone.
+
+The controller is necessary because a quadrotor must change its attitude to accelerate horizontally. However, the DMDc model deliberately uses only the six translational state variables.
+
+This distinction separates the state representation needed for physical flight control from the smaller state representation selected for system identification.
+
+The controller also includes a correction to the motor-mixing logic. Roll and pitch were previously cross-coupled, and the pitch feedback polarity was inverted. These issues caused unstable behaviour, including flips, spins, and crashes. The corrected controller uses independently and consistently wired roll and pitch channels.
+
+### 7.3.3 State and Input Representation
+
+The DMDc state is
+
+$$
+x=
+\begin{bmatrix}
+x&y&z&v_x&v_y&v_z
+\end{bmatrix}^{T}
+$$
+
+The control input is
+
+$$
+u=
+\begin{bmatrix}
+u_1&u_2&u_3&u_4
+\end{bmatrix}^{T}
+$$
+
+where the inputs correspond to the four motor commands.
+
+The model dimensions are
+
+$$
+A\in\mathbb{R}^{6\times6}
+$$
+
+$$
+B\in\mathbb{R}^{6\times4}
+$$
+
+The DMDc state excludes roll, pitch, yaw, and angular velocity, even though the controller uses attitude internally.
+
+### 7.3.4 Flight Sequence
+
+The manual flight demonstration follows the intended sequence:
+
+$$
+\text{Takeoff}
+\rightarrow
+\text{Hover}
+\rightarrow
+\text{Move in X}
+\rightarrow
+\text{Move in Y}
+\rightarrow
+\text{Return}
+\rightarrow
+\text{Descend}
+\rightarrow
+\text{Stop Motors}
+$$
+
+The flight controller stabilizes the simulated drone while the state and motor-command information is available for recording.
+
+### 7.3.5 Data Collection
+
+The data-collection component records consecutive state transitions and their corresponding control inputs.
+
+The output is saved as:
+
+`data/collected_data.npz`
+
+The expected matrix dimensions are:
+
+| Array    | Shape         | Description               |
+| -------- | ------------- | ------------------------- |
+| `X`      | \(6\times N\) | Current states            |
+| `X_next` | \(6\times N\) | Corresponding next states |
+| `U`      | \(4\times N\) | Applied motor inputs      |
+
+Each column represents one sample.
+
+### 7.3.6 DMDc Identification
+
+The identification module constructs
+
+$$
+\Omega=
+\begin{bmatrix}
+X\\U
+\end{bmatrix}
+$$
+
+and estimates
+
+$$
+G=X_{\mathrm{next}}\Omega^\dagger
+$$
+
+where
+
+$$
+G=
+\begin{bmatrix}
+A&B
+\end{bmatrix}
+$$
+
+The estimated model is
+
+$$
+x_{k+1}=Ax_k+Bu_k
+$$
+
+The learned model is used for multi-step prediction, with held-out prediction error reported through RMSE.
+
+### 7.3.7 Generated Outputs
+
+The identification pipeline generates the following outputs:
+
+| File                        | Purpose                      |
+| --------------------------- | ---------------------------- |
+| `models_out/dmdc_model.npz` | Saved identified DMDc model  |
+| `plots/position.png`        | Position prediction analysis |
+| `plots/velocity.png`        | Velocity prediction analysis |
+| `plots/singular_values.png` | Singular-value analysis      |
+| `plots/eigenvalues.png`     | Eigenvalue analysis          |
+
+The script also reports the held-out multi-step prediction RMSE.
+
+A specific numerical RMSE value is not included here because no corresponding result was supplied for this experiment.
+
+### 7.3.8 ROS Communication
+
+The Gazebo model publishes odometry through its model-scoped odometry topic.
+
+The relevant topic is
+
+`/x500_dmdc/odometry`
+
+The implementation uses `nav_msgs/Odometry` rather than relying on a dedicated pose-publisher plugin.
+
+Motor-speed commands are communicated through the model-scoped motor-command topic, with the ROS bridge mapping the actuator information to `actuator_msgs/msg/Actuators`.
+
+The motor command topic is
+
+`/x500_dmdc/command/motor_speed`
+
+These topics connect the simulated vehicle, the flight controller, and the data-collection pipeline.
 
 ---
 
-## Future Work
+## 7.4 ArduPilot Software-In-The-Loop Implementation
 
-- Collecting a broader range of flight trajectories to improve model generalization.
-- Validating the identified model against **real drone** flight data.
-- Exploring **nonlinear system identification** techniques.
-- Improving **model order selection** (rank truncation) methodology.
-- Using the identified dynamics for **model-based control design**.
-- Exploring **LQR/MPC** as candidate controllers built on top of the identified model, as future work.
+**Directory:** `ardupilot_project/`
+
+The ArduPilot implementation uses recorded DataFlash logs generated through ArduCopter Software-In-The-Loop simulation.
+
+Unlike the other simulation branches, the data pipeline begins with recorded flight-log messages rather than directly logging arrays from a Python simulation.
+
+The objective is to identify the quadrotor's attitude and rotational dynamics from observed attitude, angular-rate, and motor-output information.
+
+### 7.4.1 Data Source
+
+The implementation uses ArduPilot DataFlash `.BIN` logs.
+
+The supplied project contains four raw log files.
+
+The DataFlash messages used by the extraction script are:
+
+| Message | Information Extracted | Purpose                                                 |
+| ------- | --------------------- | ------------------------------------------------------- |
+| `ATT`   | Roll, pitch, and yaw  | Attitude information                                    |
+| `RATE`  | `R`, `P`, and `Y`     | Angular-rate information                                |
+| `RCOU`  | `C1`–`C4`             | Four output-channel signals used as motor-input proxies |
+
+The repository does not contain the ArduPilot source tree or a complete SITL installation. The supplied implementation analyzes previously generated logs; it does not launch a new simulated flight by itself.
+
+### 7.4.2 Extracting and Synchronizing Flight Data
+
+The script `scripts/extract_final.py` performs the following operations:
+
+1. Reads the input DataFlash log.
+2. Extracts the required ATT, RATE, and RCOU messages.
+3. Converts attitude angles into quaternion components.
+4. Uses the ATT timestamps as the common sampling timeline.
+5. Interpolates angular rates and motor-output channels onto that timeline.
+6. Maintains quaternion sign continuity between successive samples.
+7. Saves the synchronized signals into a CSV file.
+
+The resulting dataset contains
+
+```text
+time_us, q0, q1, q2, q3, wx, wy, wz, motor1, motor2, motor3, motor4
+```
+
+There are twelve columns:
+
+* One timestamp.
+* Seven state variables.
+* Four motor-output variables.
+
+### 7.4.3 Quaternion State Representation
+
+The state vector is
+
+$$
+x_k=
+\begin{bmatrix}
+q_0&q_1&q_2&q_3&
+\omega_x&\omega_y&\omega_z
+\end{bmatrix}^{T}
+$$
+
+The quaternion represents orientation using four values, while the three angular-rate variables represent rotation about the body axes.
+
+The quaternion representation avoids the particular singularity associated with Euler-angle parameterizations.
+
+Because \(q\) and \(-q\) represent the same physical orientation, the preprocessing script checks successive quaternion samples and flips the sign when necessary to maintain numerical continuity.
+
+### 7.4.4 Motor Input Transformation
+
+The four raw output channels are transformed into collective and differential coordinates.
+
+The transformation matrix is
+
+$$
+T=
+\frac12
+\begin{bmatrix}
+1&1&1&1\\
+1&-1&1&-1\\
+1&1&-1&-1\\
+1&-1&-1&1
+\end{bmatrix}
+$$
+
+The transformed inputs are calculated using
+
+$$
+U=MT^T
+$$
+
+where \(M\) contains the original motor-output samples.
+
+The first transformed coordinate represents collective actuation, while the remaining coordinates represent differential combinations.
+
+Their exact physical interpretation depends on the motor ordering and configuration. The transformation alone does not establish the physical sign or meaning of each roll, pitch, or yaw channel.
+
+### 7.4.5 Data Splitting and Normalization
+
+The implementation divides the dataset chronologically:
+
+* First 70%: Training.
+* Remaining 30%: Testing.
+
+Chronological splitting preserves the temporal ordering of the time-series data.
+
+The state and input variables are standardized using statistics computed from the training set:
+
+$$
+\tilde{x}_j=
+\frac{x_j-\mu_j}{\sigma_j}
+$$
+
+where \(\mu_j\) and \(\sigma_j\) are the training-set mean and standard deviation of variable \(j\).
+
+The same training-derived statistics are applied to the test data, avoiding the use of test-set statistics during model fitting.
+
+### 7.4.6 DMDc Identification
+
+The implementation constructs the augmented matrix from the standardized state and control data.
+
+For seven state variables and four inputs,
+
+$$
+A\in\mathbb{R}^{7\times7}
+$$
+
+$$
+B\in\mathbb{R}^{7\times4}
+$$
+
+The script estimates the combined operator using the pseudoinverse:
+
+$$
+G=X_{\mathrm{next}}\Omega^\dagger
+$$
+
+and separates it into \(A\) and \(B\).
+
+NumPy's pseudoinverse uses SVD-based numerical computation. This implementation should not be confused with a separate truncated-SVD algorithm that explicitly selects a user-defined model rank.
+
+### 7.4.7 Validation
+
+The current validation is one-step-ahead prediction.
+
+For each held-out sample,
+
+$$
+\hat{x}_{k+1}=A\tilde{x}_k+B\tilde{u}_k
+$$
+
+The prediction uses the actual current test state and the corresponding input.
+
+Consequently, this validation measures one-step predictive performance rather than long-horizon recursive rollout accuracy.
+
+The pipeline also calculates orientation error from the true and predicted quaternions, evaluates state prediction errors, and examines the eigenvalues of \(A\).
+
+### 7.4.8 Generated Outputs
+
+The primary output directory is `results/final/`.
+
+| File or Directory                   | Purpose                                       |
+| ----------------------------------- | --------------------------------------------- |
+| `A.csv`                             | Identified state-transition matrix            |
+| `B.csv`                             | Identified input matrix                       |
+| `true.csv`                          | Actual held-out states                        |
+| `pred.csv`                          | Predicted held-out states                     |
+| `plots/quaternion_prediction.png`   | Actual versus predicted quaternion components |
+| `plots/angular_rate_prediction.png` | Angular-rate predictions                      |
+| `plots/orientation_error.png`       | Quaternion-based orientation error            |
+| `plots/inputs.png`                  | Transformed motor-input coordinates           |
+
+The implementation also calculates prediction metrics and eigenvalue diagnostics.
+
+The numerical result values are not reproduced here because no corresponding metric output was supplied with the project summary.
 
 ---
 
-## Conclusion
+## 7.5 Drake-Based Identification and Nonlinear-System Experiments
 
-This project demonstrates a data-driven framework for learning quadrotor dynamics using Dynamic Mode Decomposition with Control (DMDc). The same identification methodology — data generation, construction of $X$, $X_{\text{next}}$, and $U$, SVD-based computation of $G = [A \; B]$, and validation against held-out data — is applied consistently across three different quadrotor environments: Gym-PyBullet, MuJoCo, and ArduPilot SITL. The resulting matrices $A$ and $B$ provide a compact, discrete-time, linear mathematical representation of quadrotor dynamics that can be used for prediction and, in future work, for model-based control design.
+**Directory:** `drake_koopman_sindy/`
+
+The Drake implementation extends the project beyond the basic DMDc workflow.
+
+It combines a simulated quadrotor, LQR-controlled trajectory tracking, data-driven identification, nonlinear feature representations, sparse equation discovery, state estimation, and vector-field visualization.
+
+Unlike the other implementations, this branch also investigates a separate nonlinear predator-prey system with known governing equations.
+
+### 7.5.1 Quadrotor Simulation
+
+The simulation is implemented in
+
+`drake_sim/circle_tracking.py`
+
+A quadrotor plant is instantiated using Drake's `QuadrotorPlant`.
+
+The state vector is
+
+$$
+x=
+\begin{bmatrix}
+x&y&z&
+\phi&\theta&\psi&
+v_x&v_y&v_z&
+\omega_x&\omega_y&\omega_z
+\end{bmatrix}^{T}
+$$
+
+The state contains twelve variables:
+
+* Three position components.
+* Three attitude angles.
+* Three linear velocity components.
+* Three angular velocity components.
+
+The four control inputs correspond to rotor thrust commands.
+
+### 7.5.2 Hover Operating Point and LQR
+
+The simulation initializes a nominal hover state at an altitude of 1 metre.
+
+The recorded configuration uses a quadrotor mass of approximately \(0.7750\,\mathrm{kg}\).
+
+Assuming equal rotor contributions, the nominal thrust per rotor is
+
+$$
+T_{\mathrm{hover}}=\frac{mg}{4}
+$$
+
+Using \(g=9.81\,\mathrm{m/s^2}\),
+
+$$
+T_{\mathrm{hover}}\approx1.9007\,\mathrm{N}
+$$
+
+Drake linearizes the plant around the hover operating point and uses the resulting local linear model to design an LQR controller.
+
+The control law is
+
+$$
+u=u_{\mathrm{hover}}-K(x-x_{\mathrm{ref}})
+$$
+
+where \(K\) is the feedback gain matrix.
+
+The recorded gain matrix has dimensions \(4\times12\), corresponding to four control inputs and twelve state variables.
+
+**Scope distinction:** LQR is used here to generate controlled simulation data. The project does not establish a completed LQR controller designed from the learned DMDc matrices and validated as the final controller.
+
+### 7.5.3 Circular Trajectory
+
+The reference horizontal position is defined as
+
+$$
+x_{\mathrm{ref}}(t)=0.5\cos(0.5t)
+$$
+
+$$
+y_{\mathrm{ref}}(t)=0.5\sin(0.5t)
+$$
+
+The reference altitude is
+
+$$
+z_{\mathrm{ref}}(t)=1
+$$
+
+This produces a circular reference with radius \(0.5\,\mathrm{m}\) and angular frequency \(0.5\,\mathrm{rad/s}\).
+
+The simulation runs for 30 seconds, and Meshcat provides three-dimensional visualization and trajectory replay.
+
+### 7.5.4 Recorded Data
+
+The simulation records current states, next states, and inputs.
+
+| Array              | Shape            | Purpose                   |
+| ------------------ | ---------------- | ------------------------- |
+| `X_drake.npy`      | \(12\times5475\) | Current states            |
+| `Xprime_drake.npy` | \(12\times5475\) | Corresponding next states |
+| `U_drake.npy`      | \(4\times5475\)  | Control inputs            |
+
+These arrays are used in subsequent identification experiments.
+
+### 7.5.5 DMDc: Linear Baseline
+
+**File:** `identification/edmdc.py`
+
+The module implements a plain DMDc baseline alongside EDMDc.
+
+For the Drake data, the baseline estimates a linear model with
+
+$$
+A\in\mathbb{R}^{12\times12}
+$$
+
+$$
+B\in\mathbb{R}^{12\times4}
+$$
+
+The estimated model is used to calculate one-step fitting error and examine the eigenvalues of the identified state-transition matrix.
+
+The purpose of the baseline is to provide a point of comparison for models that incorporate nonlinear features.
+
+### 7.5.6 EDMDc: Nonlinear Feature Lifting
+
+Extended Dynamic Mode Decomposition with Control (EDMDc) augments the original state representation with nonlinear features.
+
+The implementation adds trigonometric features for selected attitude variables.
+
+For roll, pitch, and yaw, the feature dictionary includes their sine and cosine:
+
+$$
+\Psi(x)=
+\begin{bmatrix}
+x\\
+\sin(\phi)\\
+\cos(\phi)\\
+\sin(\theta)\\
+\cos(\theta)\\
+\sin(\psi)\\
+\cos(\psi)
+\end{bmatrix}
+$$
+
+The implementation increases the state-feature dimension from 12 to 18.
+
+The learned relationship becomes
+
+$$
+\Psi(x_{k+1})
+\approx
+A_{\Psi}\Psi(x_k)+Bu_k
+$$
+
+The lifted model remains linear in its estimated coefficients while representing additional nonlinear observables.
+
+The implementation also includes a polynomial dictionary for selected products of state variables, including the prey-predator interaction term in the Lotka-Volterra experiment.
+
+### 7.5.7 SINDy: Sparse Identification of Nonlinear Dynamics
+
+**File:** `identification/sindy.py`
+
+SINDy attempts to identify a compact collection of mathematical terms that explain observed system dynamics.
+
+The implementation constructs a candidate feature matrix from selected terms such as:
+
+* Constant terms.
+* Individual state variables.
+* Control inputs.
+* Quadratic state products.
+* Sine and cosine features.
+
+The feature library is represented by \(\Theta\).
+
+The algorithm estimates the coefficient matrix \(\Xi\) through least-squares regression and Sequentially Thresholded Least Squares (STLSQ).
+
+The procedure repeatedly:
+
+1. Estimates coefficients using least squares.
+2. Removes coefficients whose magnitudes fall below a specified threshold.
+3. Refits the remaining coefficients.
+4. Repeats until the configured iteration limit is reached.
+
+Depending on the configuration, SINDy can estimate continuous-time derivatives or directly fit a discrete-time next-state mapping.
+
+When a time step is supplied, the derivative is approximated using
+
+$$
+\dot{x}_k\approx
+\frac{x_{k+1}-x_k}{\Delta t}
+$$
+
+Without a time step, the implementation directly fits the next state.
+
+The objective is to discover potentially interpretable dynamical equations rather than simply producing an unrestricted linear regression model.
+
+### 7.5.8 Lotka-Volterra Nonlinear Validation
+
+**File:** `identification/lotka_volterra.py`
+
+The Lotka-Volterra experiment provides a nonlinear test system with known governing equations.
+
+The states are:
+
+* \(x\): Prey population.
+* \(y\): Predator population.
+
+The system is defined as
+
+$$
+\frac{dx}{dt}=\alpha x-\beta xy+u_1
+$$
+
+$$
+\frac{dy}{dt}=\delta xy-\gamma y+u_2
+$$
+
+The parameters used in the experiment are
+
+$$
+\alpha=1.1,\qquad
+\beta=0.4,\qquad
+\delta=0.1,\qquad
+\gamma=0.4
+$$
+
+The system is integrated using SciPy's `solve_ivp`. Small time-varying control signals are applied, and Gaussian noise is added to the generated state data.
+
+The identification methods evaluated include:
+
+* Plain DMDc.
+* EDMDc with trigonometric features.
+* EDMDc with trigonometric and polynomial features.
+* SINDy with a quadratic feature library.
+
+The phase portrait provides a visual comparison of the predator-prey dynamics.
+
+#### Reported Results
+
+| Method                                       | Reported One-Step RMSE |
+| -------------------------------------------- | ---------------------: |
+| Plain DMDc                                   |                 0.1150 |
+| EDMDc, trigonometric features                |                 0.0950 |
+| EDMDc, trigonometric and polynomial features |                 0.1388 |
+| SINDy                                        |                 0.0286 |
+
+These figures require careful interpretation.
+
+The EDMDc errors are calculated in lifted feature space, while the DMDc and SINDy errors are calculated in the original state space. The values are therefore not a fully equivalent performance comparison.
+
+Additionally, the SINDy output reports eight active terms out of eight candidate features. The result does not establish successful sparse-term elimination, even though the identified coefficients approximate several of the known Lotka-Volterra coefficients.
+
+### 7.5.9 Comparison Across Identification Methods
+
+**File:** `identification/compare_methods.py`
+
+The comparison script evaluates DMDc, EDMDc, and SINDy using the recorded Drake quadrotor data.
+
+The implementation reports fitting RMSE, eigenvalue diagnostics, lifted feature dimensions, and active-coefficient counts.
+
+The provided results are:
+
+| Method                        | Reported RMSE | Additional Diagnostic                                                  |
+| ----------------------------- | ------------: | ---------------------------------------------------------------------- |
+| Plain DMDc                    |      0.000229 | Maximum absolute eigenvalue: 1.2627                                    |
+| EDMDc, trigonometric features |      0.000215 | Maximum absolute eigenvalue: 9108.1548; lifted dimension: 18           |
+| SINDy                         |      0.000229 | 176 nonzero coefficients across 23 candidate features and 12 equations |
+
+**These are reported in-sample fitting errors, not independent test-set errors.**
+
+The EDMDc error is measured in lifted feature space, unlike the original-state error used for the DMDc and SINDy results. Therefore, the RMSE values should not be treated as directly comparable.
+
+The very large EDMDc maximum absolute eigenvalue also raises a model-stability and conditioning concern that requires further investigation before long-horizon prediction or control.
+
+The SINDy count represents nonzero coefficients across the equations, not 176 distinct input features.
+
+### 7.5.10 Kalman Filtering
+
+**File:** `identification/kalman_filter.py`
+
+The Kalman-filter experiment investigates combining a learned state-transition model with noisy measurements.
+
+Gaussian noise with standard deviation \(0.01\) is added to the saved current-state and next-state arrays. A fixed random seed is used for reproducibility.
+
+A linear state-transition model is estimated from the noisy data.
+
+The prediction step is
+
+$$
+\hat{x}_{k+1|k}
+=
+A\hat{x}_{k|k}+Bu_k
+$$
+
+The covariance prediction is
+
+$$
+P_{k+1|k}
+=
+AP_{k|k}A^T+Q
+$$
+
+The Kalman gain combines the model prediction with measurement information. The measurement update corrects the estimate using the innovation between the observed state and predicted state.
+
+The implementation assumes constant process- and measurement-noise covariance matrices:
+
+$$
+Q=0.001I
+$$
+
+$$
+R=0.01I
+$$
+
+#### Reported Results
+
+| Metric               |    Value |
+| -------------------- | -------: |
+| Raw noisy RMSE       | 0.014245 |
+| Filtered RMSE        | 0.010563 |
+| Reported Improvement |    25.8% |
+
+The current calculation does not compare both estimates against aligned clean ground-truth states. It therefore does not yet establish a verified 25.8% reduction in true state-estimation error.
+
+A stronger evaluation would compare the raw and filtered estimates against the same clean reference sequence at matching time indices.
+
+### 7.5.11 Vector-Field Visualization
+
+**File:** `identification/meshgrid_viz.py`
+
+The vector-field implementation visualizes the learned dynamics over selected regions of state space.
+
+For Lotka-Volterra, it evaluates the true equations and SINDy-identified equations over a grid of prey and predator population values.
+
+For the Drake quadrotor, it evaluates the EDMDc model over a two-dimensional grid of roll and pitch angles while holding the other state variables at zero and approximating the input with the mean observed input vector.
+
+The resulting arrows visualize the predicted direction and relative rate of change in the selected variables.
+
+The generated plots are:
+
+* `plots/meshgrid_lotka_volterra.png`
+* `plots/meshgrid_drake_rollpitch.png`
+
+The drone vector-field visualization is a two-dimensional slice of the learned twelve-state system, not a complete representation of the full dynamics.
 
 ---
 
-## Results
+# 8. Experimental Results
 
-Results will be added later by the team.
+This section summarizes the results available from the supplied implementations. Numerical metrics are reported only where values were provided.
+
+## 8.1 MuJoCo Validation
+
+The current MuJoCo eight-state model achieved the following reported results.
+
+| State                  | Validation RMSE |
+| ---------------------- | --------------: |
+| Altitude error         |          0.1235 |
+| Vertical velocity      |          0.0102 |
+| Roll                   |          0.0077 |
+| Pitch                  |          0.0085 |
+| Yaw                    |          0.0371 |
+| Angular velocity \(p\) |          0.0052 |
+| Angular velocity \(q\) |          0.0083 |
+| Angular velocity \(r\) |          0.0110 |
+
+The individual state plots provide a visual comparison of the recursive DMDc predictions against the actual MuJoCo validation trajectory.
+
+The rank-4 experiment also demonstrates that reducing the retained model order can remove dynamics needed for accurate prediction.
+
+## 8.2 Gym-PyBullet
+
+The Gym-PyBullet implementation produces an identified model, position and velocity prediction plots, and a singular-value plot.
+
+The documented pipeline uses held-out test data for validation.
+
+A numerical prediction RMSE is not included in the supplied project summary.
+
+## 8.3 Gazebo
+
+The Gazebo implementation saves the identified model and generates position, velocity, singular-value, and eigenvalue plots.
+
+Its identification script reports held-out multi-step prediction RMSE.
+
+A numerical RMSE result was not supplied for inclusion in this README.
+
+## 8.4 ArduPilot SITL
+
+The ArduPilot implementation identifies attitude dynamics using quaternion and angular-rate information extracted from synchronized DataFlash logs.
+
+It evaluates one-step predictions on the held-out chronological test segment and generates attitude, angular-rate, orientation-error, and input plots.
+
+Numerical evaluation outputs are produced by the script, but specific metric values were not supplied for this summary.
+
+## 8.5 Drake
+
+The Drake experiments report DMDc, EDMDc, and SINDy fitting errors on the simulated quadrotor data, along with separate Lotka-Volterra identification results and a Kalman-filter experiment.
+
+These results establish that the identification and estimation routines execute and generate diagnostic outputs. They do not establish that one method is universally superior.
+
+The comparisons require additional testing because the current results differ in evaluation space and do not all use independent held-out test data.
+
+## 8.6 Interpreting Results Across Environments
+
+The implementations differ in several important ways.
+
+| Aspect               | Gym-PyBullet                       | MuJoCo                                | Gazebo                         | ArduPilot SITL               | Drake                                                                |
+| -------------------- | ---------------------------------- | ------------------------------------- | ------------------------------ | ---------------------------- | -------------------------------------------------------------------- |
+| Primary state        | Position and velocity              | Altitude, attitude, and angular rates | Position and velocity          | Quaternion and angular rates | Full pose, velocity, and angular velocity                            |
+| State dimension      | 6                                  | 8                                     | 6                              | 7                            | 12                                                                   |
+| Input representation | Motor RPM                          | Motor commands                        | Motor commands                 | Transformed motor outputs    | Rotor thrust                                                         |
+| Data source          | PID-controlled simulation          | Manual simulated flight               | PID-controlled simulation      | DataFlash logs               | LQR-controlled simulated trajectory                                  |
+| Main method          | DMDc with SVD-based rank selection | DMDc                                  | SVD-based DMDc                 | DMDc using pseudoinverse     | DMDc, EDMDc, and SINDy                                               |
+| Validation focus     | Held-out flight data               | Recursive held-out trajectory         | Held-out multi-step prediction | One-step held-out prediction | Primarily reported fitting errors, plus nonlinear-system experiments |
+
+Although all implementations investigate data-driven dynamics modeling, **their state representations and validation procedures differ**.
+
+RMSE values across these implementations should not be ranked directly without first using comparable states, scaling, data splits, and prediction horizons.
 
 ---
 
-## References
+# 9. Validation Methodology
 
-Base paper and other relevant study materials will be added later.
+## 9.1 Training and Validation Separation
+
+The general objective is to use one dataset to identify the model and separate observations to test its predictions.
+
+Training data is used to estimate \(A\) and \(B\).
+
+Validation data is used to evaluate the estimated model.
+
+When a validation trajectory is recursively predicted, the model receives the validation control input at each step while using its own preceding predicted state.
+
+This evaluates whether the model can reproduce a trajectory without repeatedly resetting the prediction to the measured state.
+
+## 9.2 One-Step Versus Multi-Step Validation
+
+One-step validation and multi-step validation answer different questions.
+
+**One-step prediction** examines the next-state prediction error when the actual current state is known.
+
+**Multi-step prediction** evaluates how prediction errors accumulate when the model is applied repeatedly.
+
+The ArduPilot implementation currently uses one-step-ahead prediction, whereas the MuJoCo and Gazebo implementations perform recursive multi-step prediction.
+
+A strong one-step result does not guarantee stable or accurate long-horizon behaviour.
+
+## 9.3 Eigenvalue Analysis
+
+The eigenvalues of the identified state-transition matrix can provide useful information about the model.
+
+For a discrete-time autonomous linear system, the spectral radius is
+
+$$
+\rho(A)=\max_i|\lambda_i(A)|
+$$
+
+If all eigenvalues lie strictly inside the unit circle, the autonomous linear system is asymptotically stable.
+
+However, this result should be interpreted carefully for an identified quadrotor model.
+
+Eigenvalue analysis of \(A\) alone does not establish the stability of the complete physical system, particularly when the model is approximate, the state is scaled, inputs are present, or a feedback controller has not been analyzed.
+
+## 9.4 Sources of Prediction Error
+
+Prediction errors may arise from:
+
+* The nonlinear nature of quadrotor dynamics.
+* Insufficiently varied training trajectories.
+* Incomplete state representations.
+* Differences between motor commands and actual applied forces.
+* Measurement noise and data synchronization.
+* Model-order selection.
+* Numerical conditioning.
+* Extrapolation beyond the conditions represented in the training data.
+* Recursive accumulation of prediction errors.
+
+These factors are important when interpreting the results of each implementation.
+
+---
+
+# 10. Limitations
+
+The project demonstrates multiple approaches to data-driven system identification, but several limitations remain.
+
+## 10.1 Linear Approximation of Nonlinear Dynamics
+
+Standard DMDc identifies a linear state-transition model. Quadrotor dynamics are nonlinear, so a single linear model may approximate the system well only over a restricted range of operating conditions.
+
+EDMDc explores a richer feature representation, but an expanded feature space does not automatically guarantee a more stable or accurate model.
+
+## 10.2 Different State Representations
+
+The implementations use different state vectors.
+
+Gym-PyBullet and Gazebo focus on translation, MuJoCo includes attitude and vertical dynamics, and ArduPilot uses quaternion attitude with angular rates.
+
+Consequently, the resulting matrices represent different state-transition relationships and are not directly interchangeable.
+
+## 10.3 Control-Input Semantics
+
+Motor RPM, thrust, actuator commands, and raw output signals are different quantities.
+
+The relationship between these signals and the actual forces applied to the vehicle may depend on motor dynamics, calibration, scaling, and vehicle configuration.
+
+## 10.4 Data Quality and Excitation
+
+Model quality depends on the data used for identification.
+
+Trajectories with limited variation may not sufficiently excite every important dynamic mode. Models trained on narrow motion patterns may generalize poorly to other maneuvers.
+
+## 10.5 Validation Horizon
+
+One-step prediction errors do not demonstrate long-horizon accuracy.
+
+Recursive predictions are more informative about model rollout behaviour, but they are also sensitive to small errors that accumulate over time.
+
+## 10.6 Inconsistent Evaluation Spaces
+
+The Drake EDMDc implementation reports errors in lifted feature space, whereas other reported errors use original-state values.
+
+These figures do not provide an equivalent basis for ranking methods.
+
+A consistent evaluation should compare each model's prediction against the same original-state targets on the same independent test transitions.
+
+## 10.7 Stability and Numerical Conditioning
+
+The reported Drake EDMDc eigenvalue magnitude indicates a potential stability and conditioning issue that needs additional investigation.
+
+Similarly, reduced-rank models must be tested to determine whether removing singular directions preserves the dynamics needed for the intended prediction task.
+
+## 10.8 Limited Physical Validation
+
+The current work is based on simulation and SITL data.
+
+Models identified in simulation may not transfer directly to a physical drone because of differences in actuator response, sensor noise, aerodynamic effects, calibration, and other real-world factors.
+
+## 10.9 Incomplete Closed-Loop Validation
+
+The project identifies models and evaluates their predictions. It does not establish a completed control system that uses the learned DMDc model to control a physical quadrotor.
+
+Controller design using the identified dynamics remains future work.
+
+---
+
+# 11. Future Work
+
+Potential improvements include the following.
+
+### 11.1 Broader Data Collection
+
+Collect additional trajectories with more varied inputs, operating conditions, and movement patterns.
+
+Use multiple training and validation trajectories to evaluate whether the models generalize beyond a single flight.
+
+### 11.2 More Rigorous Validation
+
+Evaluate all applicable methods on independent test trajectories.
+
+Compute comparable errors in the original state space and distinguish one-step prediction performance from recursive multi-step accuracy.
+
+### 11.3 Model-Order Selection
+
+Investigate the effect of SVD truncation on model accuracy, numerical conditioning, and prediction stability.
+
+Compare reduced-order models using consistent validation criteria.
+
+### 11.4 Nonlinear System Identification
+
+Explore EDMDc feature dictionaries and SINDy candidate libraries that better represent nonlinear coupling.
+
+Investigate how feature scaling, dictionary selection, and regularization influence the identified models.
+
+### 11.5 Stability and Long-Horizon Analysis
+
+Study eigenvalues, conditioning, recursive prediction error, and the sensitivity of the model to different training datasets.
+
+Validate whether model behaviour remains reasonable outside the immediate region covered by the training trajectory.
+
+### 11.6 Improved State Estimation
+
+Evaluate Kalman filtering against aligned clean ground-truth data.
+
+Investigate the selection of process- and measurement-noise covariance matrices using more realistic measurement assumptions.
+
+### 11.7 Cross-Environment Comparison
+
+Use comparable reference trajectories and evaluation procedures to examine how data generation and simulator-specific control inputs affect model identification.
+
+Where appropriate, investigate whether the identified dynamics can be adapted between environments.
+
+### 11.8 Data-Driven Control
+
+Investigate the use of identified dynamics for model-based controller design, including candidate LQR and model predictive control approaches.
+
+Such work should include closed-loop simulation, controller-stability analysis, and appropriate validation before any physical deployment.
+
+### 11.9 Simulation-to-Hardware Validation
+
+A later stage may compare models identified from simulation or SITL with measured physical-drone data.
+
+This would help assess how actuator dynamics, sensor noise, and unmodeled physical effects influence model accuracy.
+
+---
+
+# 12. Repository Structure
+
+The current repository contains the following principal directories:
+
+```text
+Drones_S5_AB07_Drone_System_Identification_DMDc/
+│
+├── DMDc_Quadrotor_MuJoCo/
+│   ├── quadrotor.xml
+│   ├── manual_control.py
+│   ├── dmdc_manual_pipeline.py
+│   ├── dmdc_pipeline.py
+│   ├── inspect_model.py
+│   ├── run_simulation.py
+│   ├── data/
+│   └── results/
+│
+├── Gympybullet/
+│   ├── data/
+│   ├── project/
+│   ├── results/
+│   └── README.md
+│
+├── ardupilot_project/
+│   ├── raw/
+│   ├── processed/
+│   ├── scripts/
+│   │   ├── extract_final.py
+│   │   ├── dmdc.py
+│   │   └── plot_final.py
+│   ├── results/
+│   │   └── final/
+│   └── models/
+│
+├── drake_koopman_sindy/
+│   ├── drake_sim/
+│   │   └── circle_tracking.py
+│   ├── identification/
+│   │   ├── edmdc.py
+│   │   ├── sindy.py
+│   │   ├── compare_methods.py
+│   │   ├── lotka_volterra.py
+│   │   ├── kalman_filter.py
+│   │   └── meshgrid_viz.py
+│   ├── data/
+│   └── plots/
+│
+├── .gitignore
+└── README.md
+```
+
+The tree shows the principal files and folders reported for these implementations. Some output files are generated only after the corresponding scripts have been executed.
+
+### Additional Gazebo Package
+
+The Gazebo implementation uses the ROS 2 package name `quad_dmdc_sim`.
+
+Its documented workflow includes a simulation launch file, manual flight control, data collection, and a DMDc identification module.
+
+The package should be included in the appropriate ROS 2 workspace or repository branch before using the Gazebo commands in the next section. Its committed path should be added to the repository tree when the package is incorporated into this repository.
+
+---
+
+# 13. Installation and Execution
+
+Each implementation has its own runtime environment and dependencies. The commands below should be executed in the corresponding project directory or workspace.
+
+## 13.1 Gym-PyBullet
+
+The implementation uses `gym-pybullet-drones`, PyBullet, Python, and the dependencies specified by the subproject.
+
+Navigate to the PyBullet project directory containing `requirements.txt` and install its dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Run the PID-controlled simulation and data-collection script:
+
+```bash
+python project/run_pid_dmdc.py
+```
+
+This generates the recorded flight trajectory at:
+
+```text
+data/pid_dmdc_log.csv
+```
+
+Run DMDc identification:
+
+```bash
+python project/dmdc_identify.py
+```
+
+The identification script processes the collected flight data and saves the model and plots in the results directory.
+
+If the source files are nested in a project subdirectory in your checkout, first navigate to the directory containing `project/`, `data/`, and `results/`.
+
+## 13.2 MuJoCo
+
+Navigate to the MuJoCo project directory:
+
+```powershell
+cd DMDc_Quadrotor_MuJoCo
+```
+
+Activate the Python environment in which the MuJoCo dependencies are installed.
+
+To start manual control and collect flight data:
+
+```powershell
+python manual_control.py
+```
+
+To run the main DMDc identification and validation pipeline:
+
+```powershell
+python dmdc_manual_pipeline.py
+```
+
+The pipeline uses the training and validation data expected by the script. If those files have not yet been generated, collect the required data first.
+
+The directory also contains `run_simulation.py` and `inspect_model.py` for simulation and model-inspection tasks.
+
+Run the scripts from the expected project directory so that relative file paths resolve correctly.
+
+## 13.3 Gazebo Harmonic with ROS 2 Jazzy
+
+### Requirements
+
+The Gazebo workflow targets Ubuntu 24.04, ROS 2 Jazzy, and Gazebo Harmonic.
+
+Install the required packages:
+
+```bash
+sudo apt update
+
+sudo apt install \
+  ros-jazzy-ros-gz-sim \
+  ros-jazzy-ros-gz-bridge \
+  ros-jazzy-actuator-msgs \
+  python3-numpy \
+  python3-matplotlib
+```
+
+Source ROS 2 in every terminal:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+```
+
+### Build the ROS 2 Package
+
+Place the `quad_dmdc_sim` package inside a ROS 2 workspace.
+
+```bash
+mkdir -p ~/ros2_ws/src
+
+cd ~/ros2_ws/src
+```
+
+Copy the package into this directory if it is not already present, then build it:
+
+```bash
+cd ~/ros2_ws
+
+source /opt/ros/jazzy/setup.bash
+
+colcon build --symlink-install --packages-select quad_dmdc_sim
+
+source install/setup.bash
+```
+
+### Step 1: Launch Gazebo
+
+Start the simulation with the graphical interface:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+
+source ~/ros2_ws/install/setup.bash
+
+ros2 launch quad_dmdc_sim sim.launch.py gui:=true
+```
+
+In another terminal, inspect the available topics:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+
+source ~/ros2_ws/install/setup.bash
+
+ros2 topic list | grep x500_dmdc
+```
+
+### Step 2: Run the Flight Demonstration
+
+With Gazebo running, execute:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+
+source ~/ros2_ws/install/setup.bash
+
+ros2 run quad_dmdc_sim fly_manual
+```
+
+The intended flight sequence is takeoff, hover, horizontal movement, return, controlled descent, and motor shutdown.
+
+### Step 3: Collect DMDc Data
+
+Start a fresh simulation in headless mode:
+
+```bash
+ros2 launch quad_dmdc_sim sim.launch.py gui:=false
+```
+
+In a second terminal, run the collector:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+
+source ~/ros2_ws/install/setup.bash
+
+ros2 run quad_dmdc_sim data_collection
+```
+
+The collector saves:
+
+```text
+data/collected_data.npz
+```
+
+The expected array shapes are:
+
+```text
+X       : 6 × N
+X_next  : 6 × N
+U       : 4 × N
+```
+
+### Step 4: Run DMDc Identification
+
+From the package directory containing the data and identification module:
+
+```bash
+python3 -m quad_dmdc_sim.run_identification
+```
+
+Alternatively, after sourcing the workspace:
+
+```bash
+ros2 run quad_dmdc_sim run_identification
+```
+
+The resulting model is saved in:
+
+```text
+models_out/dmdc_model.npz
+```
+
+The generated plots include:
+
+```text
+plots/position.png
+plots/velocity.png
+plots/singular_values.png
+plots/eigenvalues.png
+```
+
+The script also prints the held-out multi-step prediction RMSE.
+
+### Troubleshooting
+
+**No odometry received**
+
+Inspect the available topics:
+
+```bash
+ros2 topic list | grep x500_dmdc
+```
+
+Check the odometry message:
+
+```bash
+ros2 topic echo /x500_dmdc/odometry --once
+```
+
+The model uses `nav_msgs/Odometry` on `/x500_dmdc/odometry` rather than relying on a dedicated pose topic.
+
+**No motor response**
+
+Inspect the motor-command topic:
+
+```bash
+ros2 topic info /x500_dmdc/command/motor_speed
+```
+
+Confirm that the Gazebo motor plugins and ROS bridge are using the expected model-scoped command topic and actuator message type.
+
+**Gazebo cannot find the model**
+
+The launch configuration sets `GZ_SIM_RESOURCE_PATH` to the installed model directory.
+
+Rebuild and source the workspace after modifying the model:
+
+```bash
+cd ~/ros2_ws
+
+colcon build --symlink-install --packages-select quad_dmdc_sim
+
+source install/setup.bash
+```
+
+**Headless mode opens the GUI**
+
+Use:
+
+```bash
+ros2 launch quad_dmdc_sim sim.launch.py gui:=false
+```
+
+The launch file should select server-only simulation when `gui` is disabled.
+
+## 13.4 ArduPilot Data Processing
+
+The ArduPilot analysis can be run on Windows using PowerShell.
+
+Navigate to the ArduPilot project:
+
+```powershell
+cd ardupilot_project
+```
+
+Create and activate a virtual environment:
+
+```powershell
+py -m venv .venv
+
+.\.venv\Scripts\Activate.ps1
+```
+
+Install the dependencies used by the data-processing scripts:
+
+```powershell
+python -m pip install numpy matplotlib pymavlink
+```
+
+### Step 1: Extract the DataFlash Log
+
+Move into the scripts directory:
+
+```powershell
+Set-Location .\scripts
+```
+
+Run the extraction script:
+
+```powershell
+python .\extract_final.py ..\raw\00000004.BIN ..\processed\flight08_final.csv
+```
+
+Replace `00000004.BIN` with the actual log that you intend to process.
+
+The output CSV is written to:
+
+```text
+processed/flight08_final.csv
+```
+
+**Important:** The repository contains several raw `.BIN` files, and the supplied project information does not establish which raw log produced the existing processed CSV. Choose the intended log deliberately rather than overwriting existing processed data unintentionally.
+
+If the synchronized dataset already exists and you want to reproduce the DMDc analysis, you can skip extraction.
+
+### Step 2: Run DMDc Identification
+
+From the `scripts` directory:
+
+```powershell
+python .\dmdc.py
+```
+
+The script loads the processed CSV, identifies \(A\) and \(B\), evaluates one-step predictions, and saves the resulting model matrices and evaluation outputs.
+
+### Step 3: Generate Prediction Plots
+
+Run:
+
+```powershell
+python .\plot_final.py
+```
+
+The script generates the additional prediction and error visualizations.
+
+The results are saved under:
+
+```text
+results/final/
+```
+
+Return to the project directory when finished:
+
+```powershell
+Set-Location ..
+```
+
+### Running ArduPilot SITL
+
+The processing scripts do not launch ArduPilot SITL.
+
+Running a new simulated flight requires a separate ArduPilot source installation and its associated SITL dependencies. The DataFlash extraction and DMDc commands above operate on existing logs rather than automatically starting a simulation.
+
+## 13.5 Drake Experiments
+
+Navigate to the Drake project directory:
+
+```bash
+cd drake_koopman_sindy
+```
+
+Activate the Python environment used by the project:
+
+```bash
+source venv/bin/activate
+```
+
+### Step 1: Generate Quadrotor Flight Data
+
+Run the circular trajectory simulation:
+
+```bash
+python3 drake_sim/circle_tracking.py
+```
+
+Open the Meshcat URL printed by the program to view the simulation.
+
+The script generates the recorded state and input arrays used by the identification experiments.
+
+### Step 2: Run the Identification Experiments
+
+Run the Lotka-Volterra experiment:
+
+```bash
+python3 identification/lotka_volterra.py
+```
+
+Run the SINDy experiment:
+
+```bash
+python3 identification/sindy.py
+```
+
+Run the DMDc and EDMDc experiments:
+
+```bash
+python3 identification/edmdc.py
+```
+
+Compare the identified methods:
+
+```bash
+python3 identification/compare_methods.py
+```
+
+### Step 3: Run the Kalman Filter
+
+```bash
+python3 identification/kalman_filter.py
+```
+
+### Step 4: Generate Vector-Field Visualizations
+
+```bash
+python3 identification/meshgrid_viz.py
+```
+
+The drone-data identification, Kalman-filter, and drone vector-field scripts depend on the data produced by the Drake simulation. Run the simulation first.
+
+Generated data and plots are saved in the corresponding `data/` and `plots/` directories.
+
+---
+
+# 14. Technologies and Libraries
+
+| Technology          | Purpose                                                                                 |
+| ------------------- | --------------------------------------------------------------------------------------- |
+| Python 3            | Main programming language for data collection, identification, and analysis             |
+| NumPy               | Numerical computation, matrix operations, pseudoinverse estimation, and data processing |
+| SciPy               | Numerical integration and supporting scientific-computing operations                    |
+| Matplotlib          | Prediction plots, error visualization, and phase portraits                              |
+| Gym-PyBullet-Drones | Quadrotor simulation using Gym-compatible environments and PyBullet                     |
+| MuJoCo              | Physics-based quadrotor simulation                                                      |
+| Gazebo Harmonic     | Gazebo physics simulation                                                               |
+| ROS 2 Jazzy         | Robotics communication, simulation launch, and actuator-data exchange                   |
+| pymavlink           | Reading ArduPilot DataFlash logs                                                        |
+| ArduPilot SITL      | Simulated autopilot and flight-data generation                                          |
+| Drake               | Quadrotor dynamics, linearization, simulation, and LQR control for trajectory tracking  |
+| Meshcat             | Browser-based visualization of the Drake simulation                                     |
+| SVD                 | Numerical decomposition used in DMDc identification and model-order investigation       |
+| EDMDc               | Extended feature-based system identification                                            |
+| SINDy               | Sparse identification of nonlinear equations                                            |
+| Kalman Filter       | Model-based state estimation using noisy measurements                                   |
+| Git and GitHub      | Version control and project hosting                                                     |
+
+The precise dependencies differ between implementations. A single Python environment should not be assumed to contain everything required by all simulator branches.
+
+---
+
+# 15. References
+
+1. Proctor, J. L., Brunton, S. L., and Kutz, J. N. *Dynamic Mode Decomposition with Control*. SIAM Journal on Applied Dynamical Systems, 15(1), 142–161, 2016. https://doi.org/10.1137/15M1013857
+
+2. [gym-pybullet-drones](https://github.com/learnsyslab/gym-pybullet-drones) — Quadrotor simulation framework used by the Gym-PyBullet implementation.
+
+3. [MuJoCo Documentation](https://mujoco.readthedocs.io/) — Physics simulation framework used by the MuJoCo implementation.
+
+4. [ArduPilot SITL Documentation](https://ardupilot.org/dev/docs/sitl-simulator-software-in-the-loop.html) — Software-In-The-Loop simulation for ArduPilot.
+
+5. [Gazebo Documentation](https://gazebosim.org/docs/) — Gazebo simulation and integration documentation.
+
+6. [ROS 2 Jazzy Documentation](https://docs.ros.org/en/jazzy/) — Robotics middleware used by the Gazebo implementation.
+
+7. [Drake Documentation](https://drake.mit.edu/) — Robotics modeling, simulation, linearization, and control framework used by the Drake implementation.
+
+---
+
+# 16. Conclusion
+
+This project investigates data-driven quadrotor system identification using Dynamic Mode Decomposition with Control across multiple simulation environments and recorded SITL flight data.
+
+The common DMDc formulation provides a systematic way to estimate a discrete-time mathematical model from observed states and control inputs. The resulting matrices describe how the selected state representation evolves under the recorded inputs.
+
+The Gym-PyBullet, MuJoCo, Gazebo, and ArduPilot implementations explore different state representations, actuator signals, data-generation mechanisms, and validation procedures. The Drake experiments extend this work through nonlinear feature lifting, sparse equation identification, nonlinear-system validation, Kalman filtering, and vector-field visualization.
+
+The results demonstrate how the identification workflow can be implemented and evaluated across different simulated systems. They also highlight important challenges involving model order, nonlinear dynamics, numerical conditioning, state representation, validation methodology, and prediction stability.
+
+Further work should prioritize consistent independent validation, recursive prediction analysis, improved data collection, and better comparison of models in the original state space.
+
+**The overall objective is to develop a reliable data-driven understanding of quadrotor dynamics that can serve as a foundation for future model-based control and validation on physical platforms.**
