@@ -1,0 +1,7 @@
+Lotka–Volterra Standard DMD Metrics
+===================================
+
+One-step RMSE - prey: 0.117216
+One-step RMSE - predator: 0.085746
+Rollout RMSE - prey: 25.635485
+Rollout RMSE - predator: 12.645299
