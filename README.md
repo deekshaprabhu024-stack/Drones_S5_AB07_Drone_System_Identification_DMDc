@@ -1739,19 +1739,24 @@ The objective is to identify the quadrotor's attitude and rotational dynamics fr
 
 ### 7.4.1 Data Source
 
-The implementation uses ArduPilot DataFlash `.BIN` logs.
+The implementation uses ArduPilot DataFlash `.BIN` logs [8], read with `pymavlink` [9].
 
 The supplied project contains four raw log files.
 
 The DataFlash messages used by the extraction script are:
 
-| Message | Information Extracted | Purpose                                                 |
-| ------- | --------------------- | ------------------------------------------------------- |
-| `ATT`   | Roll, pitch, and yaw  | Attitude information                                    |
-| `RATE`  | `R`, `P`, and `Y`     | Angular-rate information                                |
-| `RCOU`  | `C1`–`C4`             | Four output-channel signals used as motor-input proxies |
+| Message | Information Extracted | Logged units / use                                                     |
+| ------- | --------------------- | ---------------------------------------------------------------------- |
+| `ATT`   | Roll, pitch, and yaw  | Degrees; passed to the extractor's Euler-to-quaternion conversion     |
+| `RATE`  | `R`, `P`, and `Y`     | Degrees per second; used as angular-rate state                         |
+| `RCOU`  | `C1`–`C4`             | Output-channel PWM values in microseconds; motor-output proxies        |
 
-The repository does not contain the ArduPilot source tree or a complete SITL installation. The supplied implementation analyzes previously generated logs; it does not launch a new simulated flight by itself.
+The committed repository contains `ardupilot_project/` but not the ArduPilot
+source tree or SITL build. In the local development workspace, the separate
+`ardupilot/` checkout contains the source, `Tools/autotest/sim_vehicle.py`, and
+an ArduCopter SITL build. Users cloning this repository must obtain and build
+ArduPilot separately. The `ardupilot_project/` analysis scripts process
+existing logs; they do not launch SITL.
 
 ### 7.4.2 Extracting and Synchronizing Flight Data
 
@@ -1764,6 +1769,20 @@ The script `scripts/extract_final.py` performs the following operations:
 5. Interpolates angular rates and motor-output channels onto that timeline.
 6. Maintains quaternion sign continuity between successive samples.
 7. Saves the synchronized signals into a CSV file.
+
+In the local ArduPilot source checkout, the logger writes `ATT.Roll`,
+`ATT.Pitch`, and `ATT.Yaw` in degrees, and `RATE.R`, `RATE.P`, and `RATE.Y` in
+degrees per second (see
+`ardupilot/libraries/AP_AHRS/AP_AHRS_Logging.cpp` and
+`ardupilot/libraries/AC_AttitudeControl/AC_AttitudeControl_Logging.cpp`; the
+source checkout is not committed here).
+
+In `scripts/extract_final.py`, yaw is converted from degrees to radians before
+the Euler-to-quaternion calculation; roll and pitch values are passed directly
+from the ATT messages to that calculation. The quaternion formula uses radians
+for all three angles. Extracted RATE values remain in degrees per second.
+`dmdc.py` reports angular-rate RMSE with a `rad/s` label, and `plot_final.py`
+labels its angular-rate axes `rad/s`.
 
 The resulting dataset contains
 
@@ -1789,7 +1808,10 @@ q_0&q_1&q_2&q_3&
 \end{bmatrix}^{T}
 $$
 
-The quaternion represents orientation using four values, while the three angular-rate variables represent rotation about the body axes.
+The extractor constructs a scalar-first quaternion from roll, pitch, and yaw
+using a ZYX Euler-angle conversion; its input-angle unit error is described in
+Section 7.4.2. The three angular-rate variables are the `RATE` log values in
+degrees per second, despite the \(\omega\) notation.
 
 The quaternion representation avoids the particular singularity associated with Euler-angle parameterizations.
 
@@ -1820,7 +1842,7 @@ $$
 
 where \(M\) contains the original motor-output samples.
 
-The first transformed coordinate represents collective actuation, while the remaining coordinates represent differential combinations.
+The first transformed coordinate is a collective combination, while the remaining coordinates are differential combinations. These are linear combinations of PWM output values, not calibrated thrust or torque inputs.
 
 Their exact physical interpretation depends on the motor ordering and configuration. The transformation alone does not establish the physical sign or meaning of each roll, pitch, or yaw channel.
 
@@ -1833,14 +1855,18 @@ The implementation divides the dataset chronologically:
 
 Chronological splitting preserves the temporal ordering of the time-series data.
 
-The state and input variables are standardized using statistics computed from the training set:
+The state and transformed input variables are standardized separately using
+statistics computed from the training set:
 
 $$
-\tilde{x}_j=
-\frac{x_j-\mu_j}{\sigma_j}
+\tilde{z}_j=
+\frac{z_j-\mu_j}{\sigma_j},
+\qquad z\in\{x,u\}
 $$
 
-where \(\mu_j\) and \(\sigma_j\) are the training-set mean and standard deviation of variable \(j\).
+where \(\mu_j\) and \(\sigma_j\) are the training-set mean and standard
+deviation of variable \(j\). A standard deviation below \(10^{-12}\) is
+replaced with 1 in the scripts.
 
 The same training-derived statistics are applied to the test data, avoiding the use of test-set statistics during model fitting.
 
@@ -1858,13 +1884,22 @@ $$
 B\in\mathbb{R}^{7\times4}
 $$
 
-The script estimates the combined operator using the pseudoinverse:
+With state snapshots in columns, the script estimates the combined operator using NumPy's pseudoinverse with `rcond=1e-8`:
 
 $$
-G=X_{\mathrm{next}}\Omega^\dagger
+\begin{bmatrix}A&B\end{bmatrix}
+=X_{2,\mathrm{train}}\Omega^\dagger,\qquad
+\Omega=
+\begin{bmatrix}
+X_{1,\mathrm{train}}\\
+U_{1,\mathrm{train}}
+\end{bmatrix}
 $$
 
-and separates it into \(A\) and \(B\).
+where \(X_{1,\mathrm{train}}\) and \(X_{2,\mathrm{train}}\) contain consecutive
+standardized training-state snapshots and \(U_{1,\mathrm{train}}\) contains the
+aligned standardized inputs. The resulting combined matrix is separated into
+\(A\) and \(B\).
 
 NumPy's pseudoinverse uses SVD-based numerical computation. This implementation should not be confused with a separate truncated-SVD algorithm that explicitly selects a user-defined model rank.
 
@@ -1872,32 +1907,45 @@ NumPy's pseudoinverse uses SVD-based numerical computation. This implementation 
 
 The current validation is one-step-ahead prediction.
 
-For each held-out sample,
+For each held-out pair, with the actual current test state and the aligned test input,
 
 $$
 \hat{x}_{k+1}=A\tilde{x}_k+B\tilde{u}_k
 $$
 
-The prediction uses the actual current test state and the corresponding input.
+Here, \(\tilde{x}_k\) and \(\tilde{u}_k\) are normalized values. The predicted
+quaternion is converted back to the original feature scale, normalized to unit
+length when possible, and then returned to normalized coordinates. Predictions
+are not fed back into the next step, so this is one-step validation, not a
+recursive rollout.
 
-Consequently, this validation measures one-step predictive performance rather than long-horizon recursive rollout accuracy.
-
-The pipeline also calculates orientation error from the true and predicted quaternions, evaluates state prediction errors, and examines the eigenvalues of \(A\).
+The script reports per-state RMSE and \(R^2\) in normalized coordinates. It
+also rescales angular-rate RMSE by its training standard deviation and labels
+that output `rad/s`; the plotted angular-rate axes use the same label.
+Quaternion orientation error is computed as
+\(2\arccos(|q_{\mathrm{true}}^\mathsf{T}q_{\mathrm{pred}}|)\) in degrees after
+normalizing both quaternions. The script also prints eigenvalues and the
+spectral radius of \(A\).
 
 ### 7.4.8 Generated Outputs
 
 The primary output directory is `results/final/`.
 
-| File or Directory                   | Purpose                                       |
-| ----------------------------------- | --------------------------------------------- |
-| `A.csv`                             | Identified state-transition matrix            |
-| `B.csv`                             | Identified input matrix                       |
-| `true.csv`                          | Actual held-out states                        |
-| `pred.csv`                          | Predicted held-out states                     |
-| `plots/quaternion_prediction.png`   | Actual versus predicted quaternion components |
-| `plots/angular_rate_prediction.png` | Angular-rate predictions                      |
-| `plots/orientation_error.png`       | Quaternion-based orientation error            |
-| `plots/inputs.png`                  | Transformed motor-input coordinates           |
+| File or Directory                  | Purpose                                       |
+| ---------------------------------- | --------------------------------------------- |
+| `A.csv`                            | State-transition matrix in normalized coordinates |
+| `B.csv`                            | Input matrix in normalized coordinates        |
+| `true.csv`                         | Actual held-out standardized states           |
+| `pred.csv`                         | Predicted held-out standardized states        |
+| `quaternion_prediction.png`        | Actual versus predicted normalized quaternion components |
+| `angular_rate_prediction.png`      | One-step angular-rate predictions in normalized state coordinates |
+| `orientation_error.png`            | Quaternion orientation error in degrees |
+| `inputs.png`                       | Transformed, unnormalized PWM output coordinates |
+| `plots/`                           | Additional visualizations generated by `plot_final.py` |
+
+The `plots/` directory contains `actual_vs_predicted_attitude.png`,
+`actual_vs_predicted_rates.png`, `attitude_error.png`,
+`quaternion_components.png`, and `attitude_3d.png`.
 
 The implementation also calculates prediction metrics and eigenvalue diagnostics.
 
@@ -2565,6 +2613,8 @@ Drones_S5_AB07_Drone_System_Identification_DMDc/
 
 The tree shows the principal files and folders reported for these implementations. Some output files are generated only after the corresponding scripts have been executed.
 
+`ardupilot_project/` is the committed ArduPilot component. The separate `ardupilot/` source checkout and SITL build used in the local workflow are not included in this repository.
+
 ### Additional Gazebo Package
 
 The Gazebo implementation uses the ROS 2 package name `quad_dmdc_sim`.
@@ -2839,91 +2889,92 @@ The launch file should select server-only simulation when `gui` is disabled.
 
 ## 13.4 ArduPilot Data Processing
 
-The ArduPilot analysis can be run on Windows using PowerShell.
+The repository contains the ArduPilot log-processing project, not the ArduPilot
+source tree or SITL build. Users cloning this repository must obtain the
+ArduPilot source separately, initialize its submodules, install its SITL
+build/runtime prerequisites, and build or otherwise provide the ArduCopter SITL
+executable. Follow the official ArduPilot setup instructions [4, 10]. The
+commands below describe the local workflow; they do not run automatically as
+part of the analysis scripts.
 
-Navigate to the ArduPilot project:
+For a new local ArduPilot checkout, the source can be obtained with:
 
-```powershell
-cd ardupilot_project
+```bash
+git clone --recurse-submodules https://github.com/ArduPilot/ardupilot.git
 ```
 
-Create and activate a virtual environment:
+Install the SITL build prerequisites and build ArduCopter by following the
+official Linux setup instructions [10]. On supported Debian-based Linux
+systems, the documented prerequisite and SITL build steps are:
 
-```powershell
-py -m venv .venv
-
-.\.venv\Scripts\Activate.ps1
+```bash
+cd /path/to/ardupilot
+Tools/environment_install/install-prereqs-ubuntu.sh -y
+. ~/.profile
+./waf configure --board sitl
+./waf copter
 ```
 
-Install the dependencies used by the data-processing scripts:
+These operating-system and build dependencies are separate from the Python
+packages needed for log analysis.
 
-```powershell
-python -m pip install numpy matplotlib pymavlink
+### Run a local ArduCopter SITL flight
+
+From the separate local ArduPilot source checkout, activate the
+`venv-ardupilot` environment (adjust the path if it is stored elsewhere) and
+start SITL:
+
+```bash
+cd /path/to/ardupilot
+source /path/to/venv-ardupilot/bin/activate
+./Tools/autotest/sim_vehicle.py -v ArduCopter --console --map
 ```
 
-### Step 1: Extract the DataFlash Log
-
-Move into the scripts directory:
-
-```powershell
-Set-Location .\scripts
-```
-
-Run the extraction script:
-
-```powershell
-python .\extract_final.py ..\raw\00000004.BIN ..\processed\flight08_final.csv
-```
-
-Replace `00000004.BIN` with the actual log that you intend to process.
-
-The output CSV is written to:
+In the MAVProxy console, issue the flight commands:
 
 ```text
-processed/flight08_final.csv
+mode guided
+arm throttle
+takeoff 10
 ```
 
-**Important:** The repository contains several raw `.BIN` files, and the supplied project information does not establish which raw log produced the existing processed CSV. Choose the intended log deliberately rather than overwriting existing processed data unintentionally.
+The simulated flight generates an ArduPilot DataFlash `.BIN` log. The ArduPilot
+source checkout, SITL build, and their build/runtime dependencies are separate
+from this repository and from the Python analysis dependencies below.
 
-If the synchronized dataset already exists and you want to reproduce the DMDc analysis, you can skip extraction.
+### Process a DataFlash log and generate outputs
 
-### Step 2: Run DMDc Identification
+The following Python packages are required by the analysis scripts. Install them
+into the active Python environment; this does not install or build SITL:
 
-From the `scripts` directory:
-
-```powershell
-python .\dmdc.py
+```bash
+python3 -m pip install numpy matplotlib pymavlink
 ```
 
-The script loads the processed CSV, identifies \(A\) and \(B\), evaluates one-step predictions, and saves the resulting model matrices and evaluation outputs.
+From the committed project’s `scripts/` directory, run the following commands.
+Put the newly generated log there as `flight08.BIN`, or replace that input
+argument with its actual path:
 
-### Step 3: Generate Prediction Plots
-
-Run:
-
-```powershell
-python .\plot_final.py
+```bash
+cd /path/to/clone/dmdc_project/ardupilot_project/scripts
+python3 extract_final.py flight08.BIN ../processed/flight08_final.csv
+python3 dmdc.py
+python3 plot_final.py
 ```
 
-The script generates the additional prediction and error visualizations.
+The checked-in processed CSV is not documented as having been extracted from
+any particular one of the four checked-in raw logs. Choose the intended input
+log deliberately; extraction overwrites the processed CSV, and the later
+analysis scripts overwrite results in `../results/final/`.
 
-The results are saved under:
+If using an existing synchronized dataset, skip extraction and run only the last
+two commands. The scripts expect to be run with the working directory set to
+`ardupilot_project/scripts/`; the processed CSV and results are addressed
+relative to that directory. Outputs are written under:
 
 ```text
-results/final/
+../results/final/
 ```
-
-Return to the project directory when finished:
-
-```powershell
-Set-Location ..
-```
-
-### Running ArduPilot SITL
-
-The processing scripts do not launch ArduPilot SITL.
-
-Running a new simulated flight requires a separate ArduPilot source installation and its associated SITL dependencies. The DataFlash extraction and DMDc commands above operate on existing logs rather than automatically starting a simulation.
 
 ## 13.5 Drake Experiments
 
@@ -3036,6 +3087,12 @@ The precise dependencies differ between implementations. A single Python environ
 6. [ROS 2 Jazzy Documentation](https://docs.ros.org/en/jazzy/) — Robotics middleware used by the Gazebo implementation.
 
 7. [Drake Documentation](https://drake.mit.edu/) — Robotics modeling, simulation, linearization, and control framework used by the Drake implementation.
+
+8. [ArduPilot DataFlash Log Messages](https://ardupilot.org/copter/docs/logmessages.html) — Definitions and units for ArduPilot DataFlash messages, including `ATT`, `RATE`, and `RCOU`.
+
+9. [pymavlink](https://github.com/ArduPilot/pymavlink) — Python tools used to read ArduPilot DataFlash log files.
+
+10. [Building ArduPilot on Linux](https://ardupilot.org/dev/docs/building-setup-linux.html) — Source setup and build prerequisites for ArduPilot SITL.
 
 ---
 
