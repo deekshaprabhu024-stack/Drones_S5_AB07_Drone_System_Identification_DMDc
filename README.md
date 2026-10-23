@@ -580,79 +580,829 @@ RMSE must be interpreted in the context of the state variable, its units, the mo
 
 **Directory:** `Gympybullet/`
 
-The Gym-PyBullet implementation uses the `gym-pybullet-drones` framework and the PyBullet physics engine to generate controlled quadrotor flight data.
+This implementation develops a simulation-based workflow for identifying a mathematical model of quadrotor motion using Dynamic Mode Decomposition with Control (DMDc).
 
-The flight experiments use PID-based reference tracking, and the recorded state and input sequences are used for SVD-based DMDc identification.
+The drone is simulated using the `gym-pybullet-drones` framework and controlled using a PID controller. During flight, the drone's simulated states and applied motor RPM commands are recorded. These measurements are then used to estimate a discrete-time input–output model.
 
-### 7.1.1 Flight Data Generation
+The complete workflow is:
 
-The PID controller tracks reference positions and stabilizes the simulated drone.
+    Reference Position / Trajectory
+                  |
+                  v
+           PID Controller
+                  |
+                  v
+        Four Motor RPM Commands
+                  |
+                  v
+      Gym-PyBullet Drone Simulation
+                  |
+                  v
+        State and Input Data Logging
+                  |
+                  v
+       SVD-Based DMDc Identification
+                  |
+                  v
+          Learned Matrices A and B
+                  |
+                  v
+      Prediction and Error Evaluation
 
-The workflow includes a sequence of takeoff, hovering, horizontal movement, return, and landing.
+This implementation includes Gym-PyBullet simulation, PID-controlled data collection, DMDc identification, and prediction evaluation.
 
-The simulation records the drone's translational state and the corresponding motor RPM values.
-
-### 7.1.2 State and Input Representation
-
-The DMDc state is
-
-$$
-x=
-\begin{bmatrix}
-x&y&z&v_x&v_y&v_z
-\end{bmatrix}^{T}
-$$
-
-The input is
-
-$$
-u=
-\begin{bmatrix}
-u_1&u_2&u_3&u_4
-\end{bmatrix}^{T}
-$$
-
-where the four inputs correspond to individual motor RPM values.
-
-Consequently,
-
-$$
-A\in\mathbb{R}^{6\times6}
-$$
-
-and
-
-$$
-B\in\mathbb{R}^{6\times4}
-$$
-
-### 7.1.3 DMDc Identification
-
-The recorded flight trajectory is used to construct the state-transition and input matrices.
-
-The identification implementation uses SVD-based DMDc with model-order selection.
-
-The objective is to learn the translational dynamics from the recorded motor commands and associated state transitions.
-
-### 7.1.4 Generated Outputs
-
-The implementation records flight data and generates an identified model and prediction plots.
-
-The documented project outputs include:
-
-| File                                   | Purpose                                           |
-| -------------------------------------- | ------------------------------------------------- |
-| `data/pid_dmdc_log.csv`                | Recorded PID-controlled flight trajectory         |
-| `results/dmdc_model.npz`               | Saved identified matrices \(A\) and \(B\)         |
-| `results/dmdc_position_prediction.png` | Position prediction versus ground truth           |
-| `results/dmdc_velocity_prediction.png` | Velocity prediction versus ground truth           |
-| `results/dmdc_singular_values.png`     | Singular-value spectrum for model-order selection |
-
-The model is evaluated against held-out test data.
-
-The implementation demonstrates the complete identification workflow using position and velocity measurements. It does not use the MuJoCo or ArduPilot state representation.
+Lotka–Volterra and SINDy are not included in this implementation.
 
 ---
+
+### 7.1.2 Objectives
+
+The main objectives are:
+
+1. Simulate a quadrotor in a three-dimensional physics environment.
+2. Control its movement using desired positions or trajectories.
+3. Record position, velocity, orientation, angular velocity, and motor commands.
+4. Construct state and control-input snapshot matrices.
+5. Identify a linear discrete-time model using SVD-based DMDc.
+6. Predict drone position and velocity using the identified model.
+7. Compare predictions with the recorded PyBullet simulation response.
+8. Save the model and diagnostic plots for further analysis.
+
+The identified model is intended as an approximation of the simulated drone response over the conditions represented in the collected dataset. It is not a replacement for the complete nonlinear quadrotor physics model.
+
+---
+
+### 7.1.3 Software and Libraries
+
+| Component | Purpose |
+|---|---|
+| Python | Implements simulation, data processing, identification, and evaluation |
+| `gym-pybullet-drones` | Provides quadrotor environments, drone models, and controllers |
+| PyBullet | Simulates rigid-body motion and the response to applied rotor forces |
+| NumPy | Performs matrix operations, SVD, and prediction calculations |
+| pandas | Creates and reads the flight-data CSV |
+| Matplotlib | Generates prediction and singular-value plots |
+| `CtrlAviary` | Provides the environment receiving motor RPM commands |
+| `DSLPIDControl` | Calculates motor commands from the measured state and reference |
+
+The external framework supplies the simulation environment and PID controller. The project scripts define the experiment, collect data, identify the DMDc model, and evaluate predictions.
+
+---
+
+### 7.1.4 Project Structure
+
+The consolidated project is organized as follows:
+
+    Gympybullet/
+    ├── project/
+    │   ├── run_pid_dmdc.py
+    │   └── dmdc_identify.py
+    ├── data/
+    │   └── pid_dmdc_log.csv
+    ├── results/
+    │   ├── dmdc_model.npz
+    │   ├── dmdc_position_prediction.png
+    │   ├── dmdc_velocity_prediction.png
+    │   └── dmdc_singular_values.png
+    └── README.md
+
+Additional matrix exports such as `A_matrix.csv` and `B_matrix.csv` may also be maintained. However, the identification-script version described here saves the matrices in `dmdc_model.npz` and does not automatically create those CSV exports.
+
+---
+
+### 7.1.5 Roles of the Two Python Scripts
+
+| Script | Role |
+|---|---|
+| `run_pid_dmdc.py` | Runs the PID-controlled drone simulation and records the flight data |
+| `dmdc_identify.py` | Reads the recorded dataset, identifies the DMDc model, evaluates predictions, and saves results |
+
+The scripts are executed in this order:
+
+    run_pid_dmdc.py
+            |
+            v
+    data/pid_dmdc_log.csv
+            |
+            v
+    dmdc_identify.py
+            |
+            v
+    Identified model and prediction plots
+
+The simulation script generates the measurements. The identification script analyzes those measurements; it does not run the drone physics simulation.
+
+---
+
+### 7.1.6 Simulation Configuration
+
+| Parameter | Value |
+|---|---|
+| Environment | `CtrlAviary` |
+| Drone model | `DroneModel.CF2X` |
+| Number of drones | 1 |
+| Physics mode | `Physics.PYB` |
+| Physics frequency | 240 Hz |
+| Control frequency | 48 Hz |
+| Initial position | `[0.0, 0.0, 0.10]` m |
+| Initial roll, pitch, yaw | `[0.0, 0.0, 0.0]` rad |
+| Reset seed | 42 |
+| Obstacles | Disabled |
+| Video recording | Disabled |
+| GUI | Enabled using `--gui` |
+
+The control interval is:
+
+$$
+\Delta t = \frac{1}{48} \approx 0.02083 \text{ s}
+$$
+
+The physics engine performs five updates per control interval:
+
+$$
+\frac{240}{48} = 5
+$$
+
+The controller calculates a new action at 48 Hz, while the physics engine advances the drone motion at 240 Hz.
+
+---
+
+### 7.1.7 Reference Position and Trajectory Generation
+
+#### Initial Position-Step Experiment
+
+The original experiment used piecewise-constant position targets:
+
+| Time interval | Desired position `[x, y, z]` in metres |
+|---|---|
+| `0 ≤ t < 2 s` | `[0.0, 0.0, 0.30]` |
+| `2 ≤ t < 5 s` | `[0.0, 0.0, 0.70]` |
+| `5 ≤ t < 8 s` | `[0.30, 0.0, 0.70]` |
+| `8 ≤ t < 11 s` | `[0.30, 0.0, 0.40]` |
+| `t ≥ 11 s` | `[0.0, 0.0, 0.40]` |
+
+These changes create altitude and horizontal-motion transients. The PID controller responds by varying the motor commands, generating state–input data for identification.
+
+#### Circular-Flight Extension
+
+The reference was subsequently modified to include circular motion at a fixed altitude.
+
+The circular position reference is:
+
+$$
+p_{\mathrm{ref}}(t) =
+\begin{bmatrix}
+R\cos(\omega\tau) \\
+R\sin(\omega\tau) \\
+h
+\end{bmatrix},
+\qquad
+\tau = t - t_{\mathrm{start}}
+$$
+
+The corresponding reference velocity is:
+
+$$
+v_{\mathrm{ref}}(t) =
+\begin{bmatrix}
+-R\omega\sin(\omega\tau) \\
+R\omega\cos(\omega\tau) \\
+0
+\end{bmatrix}
+$$
+
+The supplied circular-flight configuration uses:
+
+| Parameter | Value |
+|---|---|
+| Radius | 0.35 m |
+| Altitude | 0.70 m |
+| Angular speed | 0.35 rad/s |
+| Initial hover segment | 0–3 s |
+| Circular-reference segment | 3–17 s |
+| Return-to-centre hover | After 17 s |
+| Default total duration | 22 s |
+
+The yaw reference follows the tangent direction:
+
+$$
+\psi_{\mathrm{ref}}(t) = \omega\tau + \frac{\pi}{2}
+$$
+
+The 14-second circular segment covers approximately 4.9 radians, or 281 degrees. Therefore, this configuration follows a circular arc rather than completing a full revolution.
+
+The reference changes abruptly between the initial hover, circular segment, and final hover. Tracking transients can occur at these transitions.
+
+---
+
+### 7.1.8 PID Controller Operation
+
+The PID controller forms a closed-loop feedback system.
+
+At each control step:
+
+1. Read the current simulated drone state.
+2. Obtain the desired position, velocity, and yaw reference.
+3. Calculate tracking errors.
+4. Calculate corrective control actions.
+5. Generate four motor RPM commands.
+6. Apply those commands to the simulated drone.
+7. Read the updated state.
+8. Repeat.
+
+The position error is:
+
+$$
+e_p(t) = p_{\mathrm{ref}}(t) - p(t)
+$$
+
+A PID correction combines proportional, integral, and derivative contributions:
+
+$$
+c(t) =
+K_P e(t)
++
+K_I \int_0^t e(\tau)\,d\tau
++
+K_D \frac{de(t)}{dt}
+$$
+
+- Proportional action responds to the present error.
+- Integral action responds to accumulated error.
+- Derivative action responds to the rate of error change.
+
+The project uses `DSLPIDControl.computeControlFromState()` to obtain motor commands from the current state and target references.
+
+The four-motor command vector is:
+
+$$
+u_k =
+\begin{bmatrix}
+RPM_{1,k} \\
+RPM_{2,k} \\
+RPM_{3,k} \\
+RPM_{4,k}
+\end{bmatrix}
+$$
+
+The PID controller determines the action. PyBullet determines the physical motion caused by that action.
+
+The controller does not directly overwrite the drone's actual position.
+
+---
+
+### 7.1.9 Simulation Input and Output
+
+#### High-Level Reference
+
+The desired position or trajectory specifies where the drone should move.
+
+Examples include:
+
+- Hovering at a fixed altitude.
+- Moving to a different horizontal position.
+- Following a circular reference.
+
+#### Simulation Control Input
+
+The low-level input to the `CtrlAviary` environment is the four-motor RPM command.
+
+    Desired movement
+           |
+           v
+       PID controller
+           |
+           v
+    Four commanded RPMs
+           |
+           v
+    Drone physics simulation
+
+#### Simulation Response
+
+The environment returns an observation containing the updated drone state.
+
+The project records:
+
+- Position.
+- Orientation quaternion.
+- Linear velocity.
+- Angular velocity.
+- Applied motor RPM commands.
+- Reference values.
+
+For model evaluation, the recorded PyBullet response is treated as simulation ground truth. It is not a real-world flight measurement.
+
+---
+
+### 7.1.10 Flight-Data Logging
+
+The simulation script writes:
+
+    data/pid_dmdc_log.csv
+
+The dataset contains the following quantities:
+
+| Category | Columns | Description |
+|---|---|---|
+| Time | `time` | Logged control-loop time |
+| Position reference | `target_x`, `target_y`, `target_z` | Desired position |
+| Position | `x`, `y`, `z` | Recorded simulated position |
+| Orientation | `qx`, `qy`, `qz`, `qw` | Orientation quaternion |
+| Linear velocity | `vx`, `vy`, `vz` | Recorded simulated linear velocity |
+| Angular velocity | `wx`, `wy`, `wz` | Recorded simulated angular velocity |
+| Control input | `rpm1`, `rpm2`, `rpm3`, `rpm4` | Commanded motor speeds |
+
+The circular-flight version additionally records reference velocity and target roll, pitch, and yaw.
+
+The logged quaternion and angular-velocity values are available for future analysis, but the current DMDc state uses only position and linear velocity.
+
+---
+
+### 7.1.11 State and Input Definitions for DMDc
+
+The identification script selects these state columns:
+
+    x, y, z, vx, vy, vz
+
+The state vector is:
+
+$$
+x_k =
+\begin{bmatrix}
+p_{x,k} \\
+p_{y,k} \\
+p_{z,k} \\
+v_{x,k} \\
+v_{y,k} \\
+v_{z,k}
+\end{bmatrix}
+\in \mathbb{R}^{6}
+$$
+
+The selected control-input columns are:
+
+    rpm1, rpm2, rpm3, rpm4
+
+The input vector is:
+
+$$
+u_k =
+\begin{bmatrix}
+RPM_{1,k} \\
+RPM_{2,k} \\
+RPM_{3,k} \\
+RPM_{4,k}
+\end{bmatrix}
+\in \mathbb{R}^{4}
+$$
+
+The target positions are reference signals for PID control. They are not used directly as the DMDc control-input vector in this implementation.
+
+DMDc predicts position and velocity from the measured state and supplied RPM commands. It does not calculate the RPM required to reach a target.
+
+---
+
+### 7.1.12 DMDc Model
+
+The identified discrete-time model is:
+
+$$
+x_{k+1} \approx A x_k + B u_k
+$$
+
+| Quantity | Dimensions | Meaning |
+|---|---|---|
+| Current state `x_k` | `6 × 1` | Current position and velocity |
+| Input `u_k` | `4 × 1` | Four motor RPM commands |
+| Matrix `A` | `6 × 6` | Learned state-transition mapping |
+| Matrix `B` | `6 × 4` | Learned input-effect mapping |
+| Next state `x_(k+1)` | `6 × 1` | Predicted next position and velocity |
+
+The model combines:
+
+- The contribution associated with the current measured state: `A @ x_k`.
+- The contribution associated with the applied input: `B @ u_k`.
+
+These are fitted mappings for the collected dataset. Their entries should not automatically be interpreted as unique physical parameters, especially because attitude and other relevant variables are omitted from the model state.
+
+---
+
+### 7.1.13 Snapshot-Matrix Construction
+
+For `N` recorded states, the identification script constructs current-state and next-state matrices:
+
+$$
+X =
+\begin{bmatrix}
+x_0 & x_1 & \cdots & x_{N-2}
+\end{bmatrix}
+$$
+
+$$
+X' =
+\begin{bmatrix}
+x_1 & x_2 & \cdots & x_{N-1}
+\end{bmatrix}
+$$
+
+The input matrix must contain the commands applied during those transitions:
+
+$$
+U =
+\begin{bmatrix}
+u_0 & u_1 & \cdots & u_{N-2}
+\end{bmatrix}
+$$
+
+Their dimensions are:
+
+$$
+X, X' \in \mathbb{R}^{6 \times (N-1)}
+$$
+
+$$
+U \in \mathbb{R}^{4 \times (N-1)}
+$$
+
+The full dataset relationship is:
+
+$$
+X' \approx A X + B U
+$$
+
+Each column represents one time transition.
+
+Correct timing between state, input, and next state is essential. The alignment issue in the originally shared logging code is documented in Section 7.1.20.
+
+---
+
+### 7.1.14 SVD-Based Identification
+
+The current-state and input matrices are stacked:
+
+$$
+\Omega =
+\begin{bmatrix}
+X \\
+U
+\end{bmatrix}
+\in \mathbb{R}^{10 \times (N-1)}
+$$
+
+Define the combined operator:
+
+$$
+G =
+\begin{bmatrix}
+A & B
+\end{bmatrix}
+$$
+
+Then:
+
+$$
+X' \approx G\Omega
+$$
+
+The least-squares estimate is:
+
+$$
+G = X'\Omega^\dagger
+$$
+
+where `Ω†` is the Moore–Penrose pseudoinverse.
+
+The code calculates the pseudoinverse through Singular Value Decomposition:
+
+$$
+\Omega = U_{\Omega}\Sigma_{\Omega}V_{\Omega}^{T}
+$$
+
+For retained rank `r`:
+
+$$
+G \approx X'V_r\Sigma_r^{-1}U_r^{T}
+$$
+
+After estimating `G`:
+
+- The first six columns form `A`.
+- The last four columns form `B`.
+
+The shared implementation uses rank 10, retaining all ten available directions when sufficiently many samples exist.
+
+Therefore, the current implementation uses SVD for full-state regression; it does not explicitly reduce the six-state model to a smaller latent-state model.
+
+---
+
+### 7.1.15 One-Step Prediction
+
+One-step prediction uses the actual recorded state at every sample:
+
+$$
+\hat{x}_{k+1} = A x_k + B u_k
+$$
+
+This evaluates:
+
+> Given the current measured state and applied motor input, how accurately does the model predict the immediately next state?
+
+The model is supplied with the actual state again at the following prediction step, preventing previous prediction errors from accumulating through the state sequence.
+
+---
+
+### 7.1.16 Multi-Step Rollout
+
+The rollout starts from the first recorded state:
+
+$$
+\hat{x}_0 = x_0
+$$
+
+Subsequent predictions use the model's own previous state:
+
+$$
+\hat{x}_{k+1} = A\hat{x}_k + Bu_k
+$$
+
+This evaluates long-horizon prediction under the recorded motor-input sequence.
+
+The PID controller is not rerun using the predicted states. Therefore, the rollout is not a new closed-loop controller experiment; it is a model simulation driven by logged inputs.
+
+Small model errors can accumulate during rollout, causing position and velocity predictions to drift from the PyBullet trajectory.
+
+---
+
+### 7.1.17 Evaluation Metrics
+
+The script calculates Root Mean Square Error separately for each state component:
+
+$$
+RMSE_j =
+\sqrt{
+\frac{1}{M}
+\sum_{k=1}^{M}
+\left(\hat{x}_{j,k} - x_{j,k}\right)^2
+}
+$$
+
+Two RMSE vectors are reported:
+
+1. One-step RMSE.
+2. Multi-step rollout RMSE.
+
+The state order is:
+
+    [x, y, z, vx, vy, vz]
+
+| State | RMSE unit |
+|---|---|
+| `x`, `y`, `z` | metres |
+| `vx`, `vy`, `vz` | metres per second |
+
+These metrics compare predicted states with recorded simulation states. They do not measure RPM prediction error.
+
+The current script prints the metrics to the terminal. It does not automatically save them to a separate metrics file.
+
+---
+
+### 7.1.18 Previously Recorded Experimental Results
+
+A previously shared run produced:
+
+| Quantity | Shape |
+|---|---|
+| State data | `(6, 672)` |
+| Input data | `(4, 672)` |
+| Current-state snapshots | `(6, 671)` |
+| Next-state snapshots | `(6, 671)` |
+| Input snapshots | `(4, 671)` |
+| Matrix `A` | `(6, 6)` |
+| Matrix `B` | `(6, 4)` |
+
+At 48 control updates per second, 672 logged rows correspond to a 14-second run.
+
+These results should not be identified as the default 22-second circular-flight results unless the associated dataset confirms that configuration.
+
+#### Reported Prediction Errors
+
+| State | One-step RMSE | Rollout RMSE | Unit |
+|---|---:|---:|---|
+| X position | 0.0001316 | 0.1907420 | m |
+| Y position | 0.0000229 | 0.0043767 | m |
+| Z position | 0.0002484 | 0.1738306 | m |
+| X velocity | 0.0105376 | 0.1782020 | m/s |
+| Y velocity | 0.0018424 | 0.0174026 | m/s |
+| Z velocity | 0.0198657 | 0.1802519 | m/s |
+
+The reported one-step position errors were below 0.25 mm. Rollout errors increased to approximately 19.1 cm in X position and 17.4 cm in altitude.
+
+These are preliminary same-dataset results, not independent test-set results.
+
+They must also be reassessed after correcting the state–input timing issue described below.
+
+A small error for an axis does not necessarily indicate strong predictive capability if that axis experienced little movement during data collection.
+
+---
+
+### 7.1.19 Generated Outputs
+
+| File | Purpose |
+|---|---|
+| `data/pid_dmdc_log.csv` | Recorded simulated states, references, and motor commands |
+| `results/dmdc_model.npz` | Stores `A`, `B`, singular values, and state/input column names |
+| `results/dmdc_position_prediction.png` | Compares recorded position with DMDc rollout |
+| `results/dmdc_velocity_prediction.png` | Compares recorded velocity with DMDc rollout |
+| `results/dmdc_singular_values.png` | Displays singular values of the combined state–input matrix |
+
+#### Position Prediction Plot
+
+Contains comparisons for:
+
+- X position.
+- Y position.
+- Z position.
+
+#### Velocity Prediction Plot
+
+Contains comparisons for:
+
+- X velocity.
+- Y velocity.
+- Z velocity.
+
+#### Singular-Value Plot
+
+Shows the numerical structure of the combined matrix `Ω = [X; U]`.
+
+It is a diagnostic for data scaling and rank selection, not a direct prediction-accuracy metric.
+
+---
+
+### 7.1.20 Implementation Checks and Limitations
+
+#### 1. State–Input Timing Alignment
+
+The originally shared simulation code logs `next_state` after applying `rpm`.
+
+Each CSV row therefore contains:
+
+    State after applying action k + action k
+
+However, the originally shared identification code uses:
+
+    X = states[:, :-1]
+    X_next = states[:, 1:]
+    U = inputs[:, :-1]
+
+This pairs consecutive post-action states with an input from the preceding transition.
+
+For the existing post-step logging format, the input for transitions between recorded rows should instead be selected as:
+
+    U = inputs[:, 1:]
+
+A clearer long-term implementation is to save each transition explicitly:
+
+    Current state before action
+    Applied motor RPM
+    Next state after action
+
+The model and evaluation metrics should be regenerated after correcting this alignment.
+
+#### 2. Timestamp Convention
+
+The shared logger records the loop time `t` together with the post-step state.
+
+Thus, the recorded state corresponds to the end of the control interval, while `t` marks its beginning.
+
+This convention should be documented or changed so that timestamps consistently identify when each state was measured.
+
+#### 3. Same-Dataset Evaluation
+
+The current identification script fits and evaluates the model using the same recorded trajectory.
+
+This provides a fit check but does not demonstrate generalization.
+
+A stronger evaluation should train on one experiment and test on a separate flight trajectory.
+
+#### 4. Limited State Representation
+
+The model uses position and linear velocity only.
+
+Attitude and angular velocity influence drone acceleration but are not included in the current identified state.
+
+#### 5. Linear Approximation
+
+The model uses constant matrices `A` and `B`.
+
+It cannot fully capture nonlinear rotor thrust, orientation-dependent acceleration, and coupled rotational motion across all operating conditions.
+
+#### 6. Numerical Scaling
+
+Raw motor RPM values are much larger than position and velocity values.
+
+Consequently, the singular values can be dominated by input scale. State and input scaling should be considered before drawing rank-selection conclusions from the SVD plot.
+
+#### 7. Small Singular Values
+
+The shared implementation directly inverts retained singular values.
+
+A numerical tolerance should be introduced to avoid dividing by very small singular values in poorly excited or nearly dependent datasets.
+
+#### 8. Environment Resets
+
+The simulation code resets the environment if termination or truncation occurs.
+
+Transitions across a reset must not be included as ordinary physical transitions in the identification dataset.
+
+#### 9. Physical Interpretation
+
+A fitted coefficient does not automatically identify a unique physical parameter.
+
+Feedback-dependent inputs, omitted variables, and correlations among motor commands can affect the learned matrices.
+
+---
+
+### 7.1.21 Running the Project
+
+Run the scripts from the `Gympybullet` directory using the Python environment containing the required dependencies.
+
+#### Circular-Flight Simulation with GUI
+
+    python project/run_pid_dmdc.py --gui --duration 22
+
+#### Simulation without GUI
+
+    python project/run_pid_dmdc.py --duration 22
+
+#### DMDc Identification
+
+    python project/dmdc_identify.py
+
+The simulation must run before identification so that the flight CSV exists.
+
+The scripts use paths relative to the current working directory. Running them from another directory may save or read files in an unexpected location.
+
+The default commands overwrite the existing flight CSV, model, and prediction plots. Preserve earlier experiments separately when comparing different trajectories.
+
+---
+
+### 7.1.22 Achievements
+
+The implementation establishes:
+
+1. A single-quadrotor Gym-PyBullet simulation.
+2. PID-controlled position and trajectory tracking.
+3. Logging of simulated states and four motor RPM commands.
+4. A six-state, four-input DMDc formulation.
+5. SVD-based estimation of the model matrices.
+6. One-step prediction evaluation.
+7. Multi-step rollout evaluation.
+8. Position, velocity, and singular-value plots.
+9. A saved numerical model for further analysis.
+
+The main learned relationship is:
+
+$$
+\text{Current Position and Velocity}
++
+\text{Applied Motor Commands}
+\longrightarrow
+\text{Next Position and Velocity}
+$$
+
+The work demonstrates a complete simulation-to-identification pipeline. Final model-quality claims require corrected state–input timing and independent trajectory validation.
+
+---
+
+### 7.1.23 Future Improvements
+
+Possible improvements within the DMDc workflow include:
+
+- Correcting and explicitly recording state–input–next-state timing.
+- Saving metrics and experiment configurations automatically.
+- Training and testing on separate trajectories.
+- Scaling state and input variables.
+- Applying singular-value tolerances or regularized regression.
+- Evaluating different retained ranks.
+- Including attitude and angular velocity where appropriate.
+- Using smoother transitions between reference segments.
+- Generating varied trajectories to improve data coverage.
+- Comparing against a simple persistence baseline.
+- Reporting prediction error over multiple rollout horizons.
+
+These are proposed improvements and should not be reported as completed features unless implemented and tested.
+
+---
+
+### 7.1.24 Framework Acknowledgement
+
+The simulation uses the open-source
+[gym-pybullet-drones](https://github.com/learnsyslab/gym-pybullet-drones)
+framework and the PyBullet physics engine.
+
+The framework provides the drone environment and PID controller. This project contributes the experiment configuration, reference trajectories, flight-data logging, DMDc identification workflow, and prediction evaluation.
 
 ## 7.2 MuJoCo Implementation
 
