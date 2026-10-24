@@ -1406,139 +1406,253 @@ framework and the PyBullet physics engine.
 
 The framework provides the drone environment and PID controller. This project contributes the experiment configuration, reference trajectories, flight-data logging, DMDc identification workflow, and prediction evaluation.
 
-## 7.2 MuJoCo Implementation
+## 7.2 MuJoCo-Based Quadrotor System Identification with DMDc and Koopman Models
 
-**Directory:** `DMDc_Quadrotor_MuJoCo/`
+### Overview
 
-The MuJoCo implementation focuses on identifying the quadrotor's vertical and rotational dynamics from manually controlled simulated flight data.
+This module investigates **data-driven system identification for a quadrotor simulated in MuJoCo**. Flight-state measurements and four motor commands are collected from controlled and manually driven experiments. The resulting datasets are used to estimate discrete-time dynamical models with **Dynamic Mode Decomposition with Control (DMDc)** and to explore a **Koopman-based lifted representation** for handling angular nonlinearities.
 
-Unlike the translational-state formulation used in Gym-PyBullet, this implementation includes altitude error, attitude, and body angular rates.
+The implementation contains several related experiments: an 8-state hover/attitude model, a reduced-order DMDc model, a manually collected-data variant, a 12-state circular-trajectory model, and a trigonometric Koopman-DMDc model. All current experiments are simulation based; this module does not demonstrate deployment on a physical drone.
 
-### 7.2.1 Simulation and Data Collection
+### Workflow
 
-The quadrotor is represented using the MuJoCo model defined in `quadrotor.xml`.
+```text
+MuJoCo Quadrotor Model (quadrotor.xml)
+                 |
+                 v
+     Controlled / Manual Experiments
+                 |
+                 v
+       State and Motor-Input CSVs
+                 |
+                 v
+         Data Loading and Checks
+                 |
+                 v
+       DMDc System Identification
+                 |
+       +---------+----------+
+       |                    |
+       v                    v
+ Reduced-Order DMDc   Koopman-DMDc Lifting
+       |                    |
+       +---------+----------+
+                 v
+     Validation, Error Metrics,
+     Eigenvalues and Diagnostic Plots
+```
 
-The simulation supports manually specified movement commands. Keyboard commands are converted through the control logic into individual motor commands.
+### Simulation Model
 
-The collection workflow records the time, state variables, and actual motor inputs applied to the MuJoCo simulation.
+The MuJoCo model is defined in `quadrotor.xml`. It contains a free-moving quadrotor body, a ground plane, four motor sites, visual propellers, and four virtual motor actuators. The configured quadrotor mass is **1.0 kg**, with diagonal inertia values of `0.02`, `0.02`, and `0.04`. The actuator command range is **0 to 8** per motor.
 
-The nominal hover motor value is approximately **2.4525** for the configured 1 kg quadrotor model.
+The simulation uses a **0.002 s timestep (500 Hz)**, the Runge–Kutta 4 integrator, and gravity of approximately `-9.81 m/s²` on the vertical axis. `inspect_model.py` loads the XML and prints model dimensions and actuator names. The accompanying `MJMODEL.TXT` is a text report of the compiled MuJoCo model configuration and dimensions.
 
-### 7.2.2 State Representation
+Two state representations are used for different experiments:
 
-The state vector is
-
-$$
-x=
-\begin{bmatrix}
-z_{\mathrm{error}}&
-v_z&
-\mathrm{roll}&
-\mathrm{pitch}&
-\mathrm{yaw}&
-p&q&r
-\end{bmatrix}^{T}
-$$
-
-The eight components are:
-
-| Variable  | Description                                 |
-| --------- | ------------------------------------------- |
-| `z_error` | Altitude error                              |
-| `vz`      | Vertical velocity                           |
-| `roll`    | Roll angle                                  |
-| `pitch`   | Pitch angle                                 |
-| `yaw`     | Yaw angle                                   |
-| `p`       | Angular velocity about the first body axis  |
-| `q`       | Angular velocity about the second body axis |
-| `r`       | Angular velocity about the third body axis  |
-
-The four motor commands form the control vector:
+**8-state hover/attitude representation**
 
 $$
-u=
-\begin{bmatrix}
-u_1&u_2&u_3&u_4
-\end{bmatrix}^{T}
+x_k = [z_{error},\ v_z,\ roll,\ pitch,\ yaw,\ p,\ q,\ r]^T
 $$
 
-The corresponding model dimensions are
+Here, `z_error` is the vertical position relative to the one-metre reference altitude, `v_z` is vertical velocity, `roll/pitch/yaw` are Euler angles, and `p/q/r` are the three angular-velocity components.
+
+**12-state circular-flight representation**
 
 $$
-A\in\mathbb{R}^{8\times8}
+x_k = [x,\ y,\ z,\ v_x,\ v_y,\ v_z,\ roll,\ pitch,\ yaw,\ p,\ q,\ r]^T
 $$
 
-$$
-B\in\mathbb{R}^{8\times4}
-$$
+This state includes three-dimensional position and velocity in addition to attitude and angular velocity, enabling evaluation over a circular reference trajectory.
 
-### 7.2.3 Training and Independent Validation
-
-The current experiment uses separate training and validation datasets:
-
-* `manual_training.csv` — used to identify the DMDc model.
-* `manual_validation.csv` — used for independent validation.
-
-The training dataset is used to estimate \(A\) and \(B\). The learned model is then recursively applied to the validation input sequence.
-
-The predicted states are compared against the actual MuJoCo trajectory.
-
-This evaluates the model's ability to reproduce the observed state evolution beyond the samples used for identification.
-
-### 7.2.4 Prediction and Evaluation
-
-The model predicts successive states using
+In both representations, the control vector contains the four motor commands. The identification scripts express each applied motor input as a deviation from nominal hover thrust. If `u_i^raw` is the command saved by the simulator, the model input is:
 
 $$
-\hat{x}_{k+1}=A\hat{x}_k+Bu_k
+u_k = [\Delta u_1,\ \Delta u_2,\ \Delta u_3,\ \Delta u_4]^T,\qquad
+\Delta u_i = u_i^{raw} - \frac{mg}{4}
 $$
 
-The predicted and actual trajectories are compared for all eight state variables.
+For the configured mass and gravity, the nominal per-motor hover value is approximately `2.4525`.
 
-The validation pipeline produces individual prediction comparisons and reports RMSE values.
+### DMDc Formulation
 
-### 7.2.5 Current Validation Results
+For the training trajectory, consecutive state snapshots are constructed as
 
-The current eight-state DMDc model produced the following reported validation RMSE values.
+$$
+X = [x_0, x_1, \ldots, x_{N-1}],\qquad
+X' = [x_1, x_2, \ldots, x_N]
+$$
 
-| State Variable |   RMSE |
-| -------------- | -----: |
-| `z_error`      | 0.1235 |
-| `vz`           | 0.0102 |
-| `roll`         | 0.0077 |
-| `pitch`        | 0.0085 |
-| `yaw`          | 0.0371 |
-| `p`            | 0.0052 |
-| `q`            | 0.0083 |
-| `r`            | 0.0110 |
+and the corresponding control snapshots are collected in `U`. DMDc estimates a linear discrete-time model:
 
-These values describe the reported MuJoCo validation experiment. They are not directly comparable to RMSE values from another environment unless the state representation, units, preprocessing, prediction horizon, and evaluation procedure are aligned.
+$$
+\boxed{x_{k+1} \approx A x_k + B u_k}
+$$
 
-### 7.2.6 Model-Order Investigation
+The implementation forms the augmented state-input matrix
 
-An initial rank-4 model was evaluated.
+$$
+\Omega = \begin{bmatrix} X \\ U \end{bmatrix}
+$$
 
-Independent validation indicated that important dynamics were lost when the model order was reduced to four. The current implementation therefore retains all eight state dimensions.
+and uses Singular Value Decomposition (SVD) and a truncated pseudoinverse to estimate
 
-This illustrates why a model-order decision should be based on validation performance and the dynamics that need to be represented, rather than dimensionality reduction alone.
+$$
+G = X'\Omega^{\dagger} = \begin{bmatrix} A & B \end{bmatrix}
+$$
 
-### 7.2.7 Main Files
+The matrix `A` describes the learned state transition, while `B` captures the effect of the motor inputs. Rank selection is based on retained singular-value energy in the SVD-based pipelines. The reduced-order implementation applies a second SVD to obtain a lower-dimensional basis and reduced matrices, reducing the order of the model used for rollout prediction.
 
-| File                      | Purpose                                                 |
-| ------------------------- | ------------------------------------------------------- |
-| `quadrotor.xml`           | MuJoCo quadrotor model                                  |
-| `manual_control.py`       | Manual flight control and data collection               |
-| `dmdc_manual_pipeline.py` | Main DMDc identification and validation pipeline        |
-| `dmdc_pipeline.py`        | Earlier DMDc baseline implementation                    |
-| `inspect_model.py`        | MuJoCo model inspection                                 |
-| `run_simulation.py`       | Simulation utility                                      |
-| `data/`                   | Training and validation datasets                        |
-| `results/`                | Identified model outputs, metrics, and prediction plots |
+### Implemented Experiments
 
-LQR control is not implemented in this MuJoCo branch.
+| Script                                                | Implementation                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run_simulation.py`                                   | Runs a hover/attitude experiment with a feedback controller and small, deterministic multisine motor excitation. It saves `training.csv` and `validation.csv`; each generated dataset contains 6,000 samples for a 12-second run at the 0.002-second timestep. The validation run opens a MuJoCo viewer.                                                               |
+| `manual_control.py`                                   | Opens the MuJoCo viewer for interactive keyboard control and records state and motor-input data to `data/manual_training.csv`. The keyboard adjusts throttle, roll, pitch, and yaw targets; `R` resets the targets toward level hover.                                                                                                                                 |
+| `dmdc_pipeline.py`                                    | Fits the 8-state DMDc model using `training.csv` and `validation.csv`, computes the full matrices and a **rank-4 reduced-order model**, predicts the validation trajectory, and saves RMSE, eigenvalue, and singular-value diagnostics under `results/`.                                                                                                               |
+| `dmdc_manual_pipeline.py`                             | Runs the same general reduced-order DMDc workflow on `manual_training.csv` and `manual_validation.csv`, with a configured ROM rank of 8. It currently writes to the same `results/` directory as `dmdc_pipeline.py`.                                                                                                                                                   |
+| `dmdc_circle_baseline.py` / `dmdc_circle_pipeline.py` | Implements standard 12-state DMDc for circular flight. It performs SVD rank selection, one-step prediction, recursive rollout and short-horizon tests, as well as eigenvalue and conditioning diagnostics. The two uploaded files are byte-for-byte identical copies of the same pipeline. Outputs are written under `results_dmdc_circle/`.                           |
+| `dmdc_koopman_pipeline.py`                            | Fits a DMDc baseline and a ridge-regularized Koopman-DMDc model using the 12-state circular-flight datasets. It adds six trigonometric observables for roll, pitch and yaw (12 to 18 lifted dimensions), reconstructs physical states from the lifted representation, and compares model predictions. Outputs are written to `results_koopman/`.                       |
+| `manual_control_koopman.py`                           | Generates circular-trajectory training and validation data. The flight sequence uses a 5-second takeoff, 20 seconds of circular flight and a 5-second landing. The circle is configured with a 1-metre radius, a 10-second period and a reference altitude of 1.5 metres. The script prompts for `T` (training trajectory), `V` (validation trajectory) or `Q` (quit). |
+| `koopman_circle_pipeline.py`                          | Fits a Koopman-DMDc model for the 12-state circular-flight data. Its trigonometric dictionary adds `sin` and `cos` of roll, pitch and yaw, lifting the state from **12 to 18 dimensions**. It uses SVD/truncated-pseudoinverse identification and saves validation plots and model diagnostics in `results_koopman_circle/`.                                           |
+| `circle_data_audit.py`                                | Audits `circle_training.csv` and `circle_validation.csv`: required columns, missing values, sampling interval, state/input ranges, differences between datasets, and trajectory geometry/angular progress.                                                                                                                                                             |
+| `inspect_model.py`                                    | Checks that `quadrotor.xml` loads correctly and reports the MuJoCo state dimensions, body information and four actuator names.                                                                                                                                                                                                                                         |
+
+### Dataset Organization
+
+The supplied `data.zip` contains these CSV files:
+
+| Dataset                                               | Purpose and notes                                                                                                                                                                                                            |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `training.csv`, `validation.csv`                      | 8-state hover/attitude experiments generated by `run_simulation.py`; 6,000 rows each in the supplied bundle.                                                                                                                 |
+| `manual_training.csv`                                 | Manually controlled 8-state data. The supplied copy contains 484 rows, so it is a short recording and may not provide broad enough excitation for a reliable model.                                                          |
+| `manual_training_backup.csv`, `manual_validation.csv` | Additional manual recordings. The uploaded versions contain timestamp resets/segments; use the loader's cleaning behavior and inspect the retained sample count before interpreting results.                                 |
+| `koopman_training.csv`, `koopman_validation.csv`      | 8-state datasets associated with the earlier Koopman experiment. The uploaded versions contain non-increasing timestamp intervals, so the retained segment should be checked after loading.                                  |
+| `circle_training.csv`, `circle_validation.csv`        | 12-state circular-flight experiments. Each contains 15,001 samples over approximately 30 seconds, sampled every 0.002 seconds. The files include time, physical state, reference position/velocity, and four motor commands. |
+
+The circle datasets contain `x_ref`, `y_ref`, `z_ref`, `vx_ref`, `vy_ref`, and `vz_ref` in addition to the physical state and inputs. These reference columns are useful for auditing and trajectory visualization; the current model state vector is defined separately in each identification script.
+
+### Validation and Saved Results
+
+The pipelines evaluate model predictions against recorded validation data rather than relying only on the training fit. Depending on the script, evaluation includes one-step predictions, recursive rollouts, per-state RMSE, relative error, short-horizon error, eigenvalue checks and matrix-conditioning diagnostics.
+
+The uploaded result archives contain the following output groups:
+
+| Results folder / archive                                 | Main artifacts                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `results/` (`results.zip`)                               | `A.npy`, `B.npy`, reduced matrices `A_tilde.npy` and `B_tilde.npy`, reduced basis, state-wise validation plots, `validation_rmse.csv`, an RMSE chart, singular-value energy plot, eigenvalue plot and `model_summary.txt`.                                                                                                                                                     |
+| `results_dmdc_circle/` (`results_dmdc_circle.zip`)       | Circular DMDc matrices, singular values, eigenvalues, per-state validation plots, an XY trajectory plot and `dmdc_validation_summary.csv` with one-step and full-recursive errors.                                                                                                                                                                                             |
+| `results_koopman/` (`results_koopman.zip`)               | Saved standard and lifted model matrices, reconstruction matrix, singular values, state prediction plots and a model comparison CSV. The supplied summary identifies an 8-state / 14-dimensional run, whereas the currently uploaded script uses a 12-state / 18-dimensional representation; regenerate these results before presenting them as results of the current script. |
+| `results_koopman_circle/` (`results_koopman_circle.zip`) | Lifted Koopman matrices, reconstruction matrix, eigenvalues, singular values, state plots, XY trajectory plot and `summary.txt`. The supplied summary reports physical dimension 12, lifted dimension 18, selected SVD rank 6, approximately 99.94% retained energy and a condition number of about `6.06 × 10^9`.                                                             |
+
+For the supplied standard 8-state DMDc result, `model_summary.txt` records an augmented-matrix rank of 10 and a rank-4 reduced-order model retaining 98.39% of the state-snapshot singular-value energy. The saved validation RMSE values are:
+
+| State     |   RMSE |
+| --------- | -----: |
+| `z_error` | 0.0506 |
+| `vz`      | 0.1093 |
+| `roll`    | 0.1319 |
+| `pitch`   | 0.3973 |
+| `yaw`     | 0.3109 |
+| `p`       | 0.3120 |
+| `q`       | 0.1147 |
+| `r`       | 0.1060 |
+
+The circular DMDc results show why both short-step and long-horizon evaluation matter: the saved one-step RMSE is small for several states, but the recursive rollout drifts over time, particularly in horizontal position and velocity. For example, the recorded full-recursive RMSE is approximately `1.06` for `x`, `0.81` for `y`, `0.51` for `vx`, and `0.53` for `vy`. The model should therefore be described as an identified approximation whose long-term prediction quality still requires improvement, not as a fully accurate flight predictor.
+
+### Repository Structure
+
+The files and folders visible in the supplied project screenshots, together with the folders represented by the supplied dataset/result archives, are organized conceptually as follows:
+
+```text
+DMDc_Quadrotor_MuJoCo/
+├── quadrotor.xml
+├── MJMODEL.TXT
+├── run_simulation.py
+├── manual_control.py
+├── inspect_model.py
+├── dmdc_pipeline.py
+├── dmdc_manual_pipeline.py
+├── dmdc_koopman_pipeline.py
+├── dmdc_koopman_pipeline.zip
+├── dmdc_circle_baseline.py
+├── dmdc_circle_pipeline.py
+├── koopman_circle_pipeline.py
+├── manual_control_koopman.py
+├── circle_data_audit.py
+├── z2.png
+├── .gitignore
+├── data/
+│   ├── training.csv
+│   ├── validation.csv
+│   ├── manual_training.csv
+│   ├── manual_training_backup.csv
+│   ├── manual_validation.csv
+│   ├── koopman_training.csv
+│   ├── koopman_validation.csv
+│   ├── circle_training.csv
+│   └── circle_validation.csv
+├── results/
+├── results_dmdc_circle/
+├── results_koopman/
+├── results_koopman_circle/
+├── Gympybullet/          # Separate Gym-PyBullet DMDc implementation
+└── drake_koopman_sindy/  # Separate experimental directory
+```
+
+The datasets and results were also supplied as `data.zip`, `results.zip`, `results_dmdc_circle.zip`, `results_koopman.zip`, and `results_koopman_circle.zip`. `dmdc_koopman_pipeline.zip` is an archive of a script, not a separate model. `z2.png` is a supporting image asset. `Gympybullet/` is a separate PyBullet-based workflow, while `drake_koopman_sindy/` is another separate directory and should have its own description of the code actually maintained there.
+
+### Running the Main MuJoCo Workflows
+
+Install the main dependencies in the Python environment used for the project:
+
+```bash
+pip install mujoco numpy pandas matplotlib scipy
+```
+
+From the project root, the main commands are:
+
+```bash
+# Inspect the MuJoCo model
+python inspect_model.py
+
+# Generate the 8-state training and validation data
+python run_simulation.py
+
+# Identify and evaluate the rank-4 reduced DMDc model
+python dmdc_pipeline.py
+
+# Start interactive manual data collection
+python manual_control.py
+
+# Generate circular training and validation trajectories (choose T, V, then Q)
+python manual_control_koopman.py
+
+# Check circular data quality and trajectory geometry
+python circle_data_audit.py
+
+# Run circular-trajectory identification
+python dmdc_circle_pipeline.py
+python dmdc_koopman_pipeline.py
+python koopman_circle_pipeline.py
+```
+
+`dmdc_manual_pipeline.py` requires both manual training and validation CSVs to be present. Run it only after ensuring those files contain sufficient, clean data. Run `dmdc_koopman_pipeline.py` on the circular datasets when you want to compare its ridge-regularized Koopman model with standard DMDc. Regenerate `results_koopman/` from the current script before citing its archived performance metrics, because the supplied output summary appears to come from an earlier 8-state version.
+
+### Limitations and Interpretation
+
+* DMDc identifies a linear approximation of the simulated dynamics. It does not reproduce the full nonlinear rotor/rigid-body dynamics over every flight condition.
+* One-step accuracy does not guarantee stable long-horizon prediction; the circular DMDc rollout demonstrates accumulated error.
+* The circular Koopman result reports a high condition number, indicating that the fitted problem is numerically ill-conditioned and that the model should be evaluated cautiously.
+* The short manual-training recording may not sufficiently excite all state/input relationships. Longer experiments and independent validation trajectories are preferable.
+* This project establishes simulation-based identification and analysis. Hardware integration and real-flight validation are outside the scope of the current implementation.
+
+### Summary
+
+This project brings together MuJoCo simulation, manual and controller-based data collection, SVD-based DMDc identification, reduced-order modeling, trigonometric Koopman lifting, circular trajectory experiments, and structured validation artifacts. It provides a basis for comparing linear and lifted data-driven models, while also exposing practical issues—data quality, numerical conditioning, state/schema alignment and rollout drift—that must be addressed before making strong predictive-performance claims.
 
 ---
-
 
 ## Gazebo and ROS 2
 
