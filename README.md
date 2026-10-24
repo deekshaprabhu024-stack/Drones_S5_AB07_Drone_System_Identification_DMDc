@@ -2214,64 +2214,59 @@ It combines a simulated quadrotor, LQR-controlled trajectory tracking, data-driv
 Unlike the other implementations, this branch also investigates a separate nonlinear predator-prey system with known governing equations.
 <!-- BEGIN -->
 Toy Examples Leading to the Drake Experiments
-
-Each toy isolates one idea used later. All numbers were checked numerically.
-
-# Toy 1: DMDc by hand (a 2-state, 1-input system)
+#### Toy 1: DMDc by hand (a 2-state, 1-input system)
 
 Take the true system
 
-$$
-A=\begin{bmatrix}0.9&0.1\\0&0.8\end{bmatrix},\qquad
-B=\begin{bmatrix}0\\0.5\end{bmatrix},\qquad x_{k+1}=Ax_k+Bu_k .
-$$
+$$A = \begin{bmatrix} 0.9 & 0.1 \\ 0 & 0.8 \end{bmatrix}, \quad B = \begin{bmatrix} 0 \\ 0.5 \end{bmatrix}, \quad x_{k+1} = Ax_k + Bu_k.$$
 
-Three snapshots $(x_k,u_k)\mapsto x_{k+1}$:
+Three snapshots $(x_k, u_k) \mapsto x_{k+1}$:
 
-$k$	$x_k$	$u_k$	$x_{k+1}$
-1	$(1,0)$	1	$(0.9,\;0.5)$
-2	$(0,1)$	0	$(0.1,\;0.8)$
-3	$(1,1)$	2	$(1.0,\;1.8)$
+| $k$ | $x_k$ | $u_k$ | $x_{k+1}$ |
+| :--- | :--- | :---: | :--- |
+| 1 | $(1,0)$ | 1 | $(0.9, \; 0.5)$ |
+| 2 | $(0,1)$ | 0 | $(0.1, \; 0.8)$ |
+| 3 | $(1,1)$ | 2 | $(1.0, \; 1.8)$ |
 
+&nbsp;
 
-Since $\det\Omega=1\neq0$ the regression is exact and returns the true $A,B$. The eigenvalues $0.9$ and $0.8$ are inside the unit circle, so the identified system is stable and the state decays like $0.9^k$. The Drake DMDc does the same with a $12\times16$ matrix $G$.
+$$\Omega = \begin{bmatrix} 1 & 0 & 1 \\ 0 & 1 & 1 \\ 1 & 0 & 2 \end{bmatrix}, \quad X' = \begin{bmatrix} 0.9 & 0.1 & 1.0 \\ 0.5 & 0.8 & 1.8 \end{bmatrix}, \quad G = X'\Omega^+ = \begin{bmatrix} A & B \end{bmatrix}.$$
 
-# Toy 2: Why a nonlinear system needs a lift (Koopman)
-$$\dot x_1=\mu x_1,\qquad \dot x_2=\lambda\,(x_2-x_1^2).$$
+Since $\det \Omega = 1 \neq 0$ the regression is exact and returns the true $A, B$. The eigenvalues $0.9$ and $0.8$ are inside the unit circle, so the identified system is stable and the state decays like $0.9^k$. The Drake DMDc does the same with a $12 \times 16$ matrix $G$.
 
-This is nonlinear in $x_1$. Add the observable $y=x_1^2$, so $\dot y=2x_1\dot x_1=2\mu y$. In the lifted coordinates $(x_1,x_2,y)$ the system is exactly linear:
+#### Toy 2: Why a nonlinear system needs a lift (Koopman)
 
-$$
-\frac{d}{dt}\begin{bmatrix}x_1\\x_2\\y\end{bmatrix}=
-\begin{bmatrix}\mu&0&0\\0&\lambda&-\lambda\\0&0&2\mu\end{bmatrix}
-\begin{bmatrix}x_1\\x_2\\y\end{bmatrix}.
-$$
+$$\dot{x}_1 = \mu x_1, \quad \dot{x}_2 = \lambda (x_2 - x_1^2).$$
 
-Plain DMDc on $(x_1,x_2)$ cannot represent this; EDMDc with the dictionary $\Psi=[x_1,x_2,x_1^2]$ can. The Drake EDMDc applies the same idea with $\sin$ and $\cos$ of the attitude angles.
+This is nonlinear in $x_1$. Add the observable $y = x_1^2$, so $\dot{y} = 2x_1\dot{x}_1 = 2\mu y$. In the lifted coordinates $(x_1, x_2, y)$ the system is exactly linear:
 
-# Toy 3: Why $\sin\theta$ is added for the quadrotor
+$$\frac{d}{dt} \begin{bmatrix} x_1 \\ x_2 \\ y \end{bmatrix} = \begin{bmatrix} \mu & 0 & 0 \\ 0 & \lambda & -\lambda \\ 0 & 0 & 2\mu \end{bmatrix} \begin{bmatrix} x_1 \\ x_2 \\ y \end{bmatrix}.$$
 
-Horizontal acceleration depends on thrust tilt, roughly $a_x\propto \sin\theta$. A linear model uses $\sin\theta\approx\theta$. At $\theta=0.3$ rad, $\sin 0.3=0.2955$, so the linear model is off by about $1.5\%$; it gets worse as angles grow. Adding $\sin\theta,\cos\theta$ lets a linear regression represent the tilt-to-acceleration coupling without assuming small angles.
+Plain DMDc on $(x_1, x_2)$ cannot represent this; EDMDc with the dictionary $\Psi = [x_1, x_2, x_1^2]$ can. The Drake EDMDc applies the same idea with sin and cos of the attitude angles.
 
-# Toy 4: SINDy recovers a sparse law, and the threshold matters
+#### Toy 3: Why $\sin\theta$ is added for the quadrotor
 
-Library $\Theta=[1,\;x,\;y,\;x^2,\;xy,\;y^2]$, data from Lotka-Volterra ($\alpha=1.1,\beta=0.4,\delta=0.1,\gamma=0.4$), noise-free derivative estimates. STLSQ returns
+Horizontal acceleration depends on thrust tilt, roughly $a_x \propto \sin\theta$. A linear model uses $\sin\theta \approx \theta$. At $\theta = 0.3\text{ rad}$, $\sin 0.3 = 0.2955$, so the linear model is off by about 1.5%; it gets worse as angles grow. Adding $\sin\theta$, $\cos\theta$ lets a linear regression represent the tilt-to-acceleration coupling without assuming small angles.
 
-$$\dot x = 1.099\,x-0.400\,xy,\qquad \dot y=-0.400\,y+0.100\,xy$$
+#### Toy 4: SINDy recovers a sparse law, and the threshold matters
 
-with 4 of 12 coefficients active for thresholds $0.01$ and $0.05$. With threshold $0.1$ the true coefficient $\delta=0.1$ is pruned and the $\dot y$ equation collapses to zero. The rule: the threshold must sit below the smallest true coefficient and above the noise floor.
+Library $\Theta = [1, x, y, x^2, xy, y^2]$, data from Lotka-Volterra ($\alpha = 1.1, \beta = 0.4, \delta = 0.1, \gamma = 0.4$), noise-free derivative estimates. STLSQ returns
 
-# Toy 5: One-dimensional Kalman update
+$$\dot{x} = 1.099 \, x - 0.400 \, xy, \quad \dot{y} = -0.400 \, y + 0.100 \, xy$$
 
-Model predicts $\hat x^-=2.0$ with variance $P^-=1$. Sensor reads $z=3.0$ with variance $R=1$.
+with 4 of 12 coefficients active for thresholds 0.01 and 0.05. With threshold 0.1 the true coefficient $\delta = 0.1$ is pruned and the $\dot{y}$ equation collapses to zero. The rule: **the threshold must sit below the smallest true coefficient and above the noise floor.**
 
-$$K=\frac{P^-}{P^-+R}=0.5,\qquad \hat x=\hat x^-+K(z-\hat x^-)=2.5,\qquad P=(1-K)P^-=0.5 .$$
+#### Toy 5: One-dimensional Kalman update
 
-Trusting the sensor less (larger $R$) shrinks $K$ and keeps the estimate near the model. The Drake filter does this for 12 states at once with $Q=0.001I$, $R=0.01I$.
+Model predicts $\hat{x}^- = 2.0$ with variance $P^- = 1$. Sensor reads $z = 3.0$ with variance $R = 1$.
 
-# Toy 6: Why EDMDc can become ill-conditioned
+$$K = \frac{P^-}{P^- + R} = 0.5, \quad \hat{x} = \hat{x}^- + K(z - \hat{x}^-) = 2.5, \quad P = (1 - K)P^- = 0.5.$$
 
-For small angles $\sin\theta\approx\theta$ (at $\theta=0.1$: $0.09983$ vs $0.1$, a gap of $1.7\times10^{-4}$) and $\cos\theta\approx1-\theta^2/2$. The lifted columns are almost linear combinations of existing ones, so $\Omega$ is nearly rank deficient and $\Omega^{+}$ has huge entries. This is what produced a maximum eigenvalue near $10^{4}$ in Section 7.5.9, and why a small ridge term fixes it.
+Trusting the sensor less (larger $R$) shrinks $K$ and keeps the estimate near the model. The Drake filter does this for 12 states at once with $Q = 0.001\mathbf{I}, R = 0.01\mathbf{I}$.
+
+#### Toy 6: Why EDMDc can become ill-conditioned
+
+For small angles $\sin\theta \approx \theta$ (at $\theta = 0.1$: $0.09983$ vs $0.1$, a gap of $1.7 \times 10^{-4}$) and $\cos\theta \approx 1 - \theta^2/2$. The lifted columns are almost linear combinations of existing ones, so $\Omega$ is nearly rank deficient and $\Omega^+$ has huge entries. This is what produced a maximum eigenvalue near $10^4$ in Section 7.5.9, and why a small ridge term fixes it.
 
 <!-- END -->
 
@@ -2662,31 +2657,17 @@ The drone vector-field visualization is a two-dimensional slice of the learned t
 Interpretation. In the Lotka-Volterra panel, arrows from the true and identified equations should coincide; any divergence away from the training orbit shows extrapolation error. The drone roll-pitch panel is a 2-D slice (other states set to zero, input set to its mean), so it shows how the identified model pushes roll and pitch back towards hover, not the full 12-D flow.
 <!-- END -->
 
-<!-- BEGIN -->
 ### 7.5.12 Methodology Summary
-Drake QuadrotorPlanthover linearisation + LQR
-Circle referencer = 0.5 m, w = 0.5 rad/s, 30s
-Record X, X', U12 x 5475, 4 x 5475
-Chronological split80 % train / 20 % test
-DMDc baseline
-EDMDcsin/cos lift, 12 to 18
-SINDySTLSQ, normalised library
-Held-out RMSEoriginal 12-state space
-Add noise sigma = 0.01
-Kalman filterlearned A, B, Q, R
-RMSE vs clean truth
-Lotka-Volterraknown equations
-Validate EDMDc and SINDybefore trusting them onDrake
-Vector-field slicesroll-pitch, prey-predator
+![Model Summary](drake_koopman_sindy/plots/summary.png.png)
 
 Design choices and why:
 
-Known-answer check first. Lotka-Volterra has known coefficients, so any identification error is the method's fault, not the data's.
-Same data, three methods. All methods see identical snapshots, so differences come from the model class.
-Chronological split. The last 20 % of the flight is never used for fitting, which avoids the in-sample optimism noted in earlier sections.
-One error space. EDMDc predictions are projected back to the 12 original states before computing RMSE.
-Clean-truth metric for the filter. Noise is injected into a known clean signal, so the filter can be scored against the truth.
-<!-- END -->
+1. **Known-answer check first.** Lotka-Volterra has known coefficients, so any identification error is the method's fault, not the data's.
+2. **Same data, three methods.** All methods see identical snapshots, so differences come from the model class.
+3. **Chronological split.** The last 20 % of the flight is never used for fitting, which avoids the in-sample optimism noted in earlier sections.
+4. **One error space.** EDMDc predictions are projected back to the 12 original states before computing RMSE.
+5. **Clean-truth metric for the filter.** Noise is injected into a known clean signal, so the filter can be scored against the truth.
+
 ---
 # 8. Experimental Results
 
@@ -2997,27 +2978,28 @@ The script additionally reports angular-rate RMSE as $1.298957$, $1.217942$, and
 ## 8.5 Drake
 
 <!-- BEGIN -->
-8.5 Drake
+Held-out results (last 20 % of the 30 s flight, original 12-state space, produced by `identification/validation_fixes.py`):
 
-Held-out results (last 20 % of the 30 s flight, original 12-state space, produced by identification/validation_fixes.py):
+| Method | Train RMSE | Test RMSE | Max $\lvert\text{eig}(\mathbf{A})\rvert$ | Active coefficients |
+| :--- | :---: | :---: | :---: | :---: |
+| Persistence ($\hat{x}_{k+1} = x_k$) | n/a | $4.86 \times 10^{-4}$ | n/a | n/a |
+| Plain DMDc | $2.32 \times 10^{-4}$ | $2.20 \times 10^{-4}$ | 1.0831 | 192 (dense) |
+| EDMDc (sin/cos), no regularisation | $3.11 \times 10^{-4}$ | $3.02 \times 10^{-4}$ | 10229.94 | dense |
+| EDMDc, ridge $\lambda = 10^{-4}$ | $2.33 \times 10^{-4}$ | $2.20 \times 10^{-4}$ | 1.0000 | dense |
+| SINDy, threshold 0.03 (normalised) | n/a | $2.20 \times 10^{-4}$ | n/a | 166 of 276 |
 
-Method	Train RMSE	Test RMSE	Max |eig(A)|	Active coefficients
-Persistence ($\hat x_{k+1}=x_k$)	n/a	$4.86\times10^{-4}$	n/a	n/a
-Plain DMDc	$2.32\times10^{-4}$	$2.20\times10^{-4}$	1.0831	192 (dense)
-EDMDc (sin/cos), no regularisation	$3.11\times10^{-4}$	$3.02\times10^{-4}$	10229.94	dense
-EDMDc, ridge $\lambda=10^{-4}$	$2.33\times10^{-4}$	$2.20\times10^{-4}$	1.0000	dense
-SINDy, threshold 0.03 (normalised)	n/a	$2.20\times10^{-4}$	n/a	166 of 276
+&nbsp;
 
-Noise and filtering (noise $\sigma=0.01$, RMSE against clean states):
+Noise and filtering (noise $\sigma = 0.01$, RMSE against clean states):
 
-Signal	RMSE
-Raw noisy measurement	0.010028
-Kalman estimate	0.003284 (67.2 % lower)
+| Signal | RMSE |
+| :--- | :--- |
+| Raw noisy measurement | 0.010028 |
+| Kalman estimate | 0.003284 (67.2 % lower) |
 
-Validation diagnostics *Left: EDMDc maximum eigenvalue versus ridge $\lambda$. Middle: SINDy active coefficients versus threshold. Right: Kalman RMSE against clean truth.*
+&nbsp;
 
-Reading the table: the persistence baseline shows how little the state changes per step, so the useful comparison is against persistence, not against zero. Regularised EDMDc and DMDc tie. SINDy matches them while exposing structure only on the Lotka-Volterra system. The earlier DMDc maximum eigenvalue of 1.2627 was measured on the full data set; 1.0831 here is the training segment only.
-
+Reading the table: the persistence baseline shows how little the state changes per step, so the useful comparison is **against persistence**, not against zero. Regularised EDMDc and DMDc tie. SINDy matches them while exposing structure only on the Lotka-Volterra system. The earlier DMDc maximum eigenvalue of 1.2627 was measured on the full data set; 1.0831 here is the training segment only.
 <!-- END -->
 
 ## 8.6 Interpreting Results Across Environments
@@ -3644,7 +3626,7 @@ relative to that directory. Outputs are written under:
 
 Tested on Ubuntu/WSL. The analysis scripts need only NumPy, SciPy and Matplotlib; only circle_tracking.py needs Drake. If pip install drake fails, use a Python version listed on the Drake wheel page (https://drake.mit.edu/pip.html).
 
-bash
+```bash
 sudo apt update && sudo apt install -y python3 python3-venv python3-pip
 cd drake_koopman_sindy
 python3 -m venv venv
@@ -3653,16 +3635,16 @@ pip install --upgrade pip
 pip install -r requirements.txt
 python3 -c "import numpy, scipy, matplotlib; print('analysis stack OK')"
 python3 -c "import pydrake; print('Drake OK')"
-
+```
 requirements.txt:
 
-text
+```text
 numpy>=1.26
 scipy>=1.11
 matplotlib>=3.8
 drake
 pysindy        
-
+```
 <!-- END -->
 Navigate to the Drake project directory:
 
@@ -3779,23 +3761,19 @@ The precise dependencies differ between implementations. A single Python environ
 9. [pymavlink](https://github.com/ArduPilot/pymavlink) — Python tools used to read ArduPilot DataFlash log files.
 
 10. [Building ArduPilot on Linux](https://ardupilot.org/dev/docs/building-setup-linux.html) — Source setup and build prerequisites for ArduPilot SITL.
-<!-- BEGIN -->
-Koopman, B. O. Hamiltonian Systems and Transformation in Hilbert Space. Proceedings of the National Academy of Sciences, 17(5), 315–318, 1931. https://doi.org/10.1073/pnas.17.5.315
-Williams, M. O., Kevrekidis, I. G., and Rowley, C. W. A Data-Driven Approximation of the Koopman Operator: Extending Dynamic Mode Decomposition. Journal of Nonlinear Science, 25, 1307–1346, 2015. https://doi.org/10.1007/s00332-015-9258-5
-Brunton, S. L., Budišić, M., Kaiser, E., and Kutz, J. N. Modern Koopman Theory for Dynamical Systems. SIAM Review, 64(2), 229–340, 2022. https://doi.org/10.1137/21M1401243
-Brunton, S. L., Proctor, J. L., and Kutz, J. N. Discovering Governing Equations from Data by Sparse Identification of Nonlinear Dynamical Systems. PNAS, 113(15), 3932–3937, 2016. https://doi.org/10.1073/pnas.1517384113
-Brunton, S. L., Proctor, J. L., and Kutz, J. N. Sparse Identification of Nonlinear Dynamics with Control (SINDYc). IFAC-PapersOnLine, 49(18), 710–715, 2016. https://doi.org/10.1016/j.ifacol.2016.10.249
-de Silva, B. M. et al. PySINDy: A Python Package for the Sparse Identification of Nonlinear Dynamical Systems from Data. Journal of Open Source Software, 5(49), 2104, 2020. https://doi.org/10.21105/joss.02104
-Kalman, R. E. A New Approach to Linear Filtering and Prediction Problems. Journal of Basic Engineering, 82(1), 35–45, 1960. https://doi.org/10.1115/1.3662552
-Schmid, P. J. Dynamic Mode Decomposition of Numerical and Experimental Data. Journal of Fluid Mechanics, 656, 5–28, 2010. https://doi.org/10.1017/S0022112010001217
-Tu, J. H., Rowley, C. W., Luchtenburg, D. M., Brunton, S. L., and Kutz, J. N. On Dynamic Mode Decomposition: Theory and Applications. Journal of Computational Dynamics, 1(2), 391–421, 2014. https://doi.org/10.3934/jcd.2014.1.391
-Kutz, J. N., Brunton, S. L., Brunton, B. W., and Proctor, J. L. Dynamic Mode Decomposition: Data-Driven Modeling of Complex Systems. SIAM, 2016.
-Mellinger, D. and Kumar, V. Minimum Snap Trajectory Generation and Control for Quadrotors. IEEE International Conference on Robotics and Automation, 2520–2525, 2011. https://doi.org/10.1109/ICRA.2011.5980409
-Tedrake, R. and the Drake Development Team. Drake: Model-Based Design and Verification for Robotics. https://drake.mit.edu
-Lotka, A. J. Elements of Physical Biology. Williams & Wilkins, 1925. Volterra, V. Variazioni e fluttuazioni del numero d'individui in specie animali conviventi. Memorie della R. Accademia Nazionale dei Lincei, 2, 31–113, 1926.
-Van Overschee, P. and De Moor, B. N4SID: Subspace Algorithms for the Identification of Combined Deterministic-Stochastic Systems. Automatica, 30(1), 75–93, 1994. https://doi.org/10.1016/0005-1098(94)90230-5
-Anderson, B. D. O. and Moore, J. B. Optimal Filtering. Prentice-Hall, 1979.
-<!-- END -->
+    
+11. Koopman, B. O. *Hamiltonian Systems and Transformation in Hilbert Space*. Proceedings of the National Academy of Sciences, 17(5), 315–318, 1931. https://doi.org
+
+12. Brunton, S. L., Proctor, J. L., and Kutz, J. N. *Discovering Governing Equations from Data by Sparse Identification of Nonlinear Dynamical Systems*. PNAS, 113(15), 3932–3937, 2016. https://doi.org
+
+13. [PySINDy](https://doi.org) — de Silva, B. M. et al. PySINDy: A Python Package for the Sparse Identification of Nonlinear Dynamical Systems from Data. Journal of Open Source Software, 5(49), 2104, 2020.
+    
+14. Tu, J. H., Rowley, C. W., Luchtenburg, D. M., Brunton, S. L., and Kutz, J. N. *On Dynamic Mode Decomposition: Theory and Applications*. Journal of Computational Dynamics, 1(2), 391–421, 2014. https://doi.org
+    
+15. Mellinger, D. and Kumar, V. *Minimum Snap Trajectory Generation and Control for Quadrotors*. IEEE International Conference on Robotics and Automation, 2520–2525, 2011. https://doi.org
+    
+16. Van Overschee, P. and De Moor, B. *N4SID: Subspace Algorithms for the Identification of Combined Deterministic-Stochastic Systems*. Automatica, 30(1), 75–93, 1994. https://doi.org
+
 ---
 
 # 16. Conclusion
