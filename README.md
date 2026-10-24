@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="300" height="77" alt="image" src="https://github.com/user-attachments/assets/0b93031f-b622-45ca-9b65-fe8423ad26f3" />
+  <img width="600" height="100" alt="image" src="https://github.com/user-attachments/assets/0b93031f-b622-45ca-9b65-fe8423ad26f3" />
 </p>
 
 # Drone System Identification Using DMDc
@@ -8,11 +8,11 @@
 
 | Name | Roll Number | Email |
 |---|---|---|
-| Deeksha Prabhu | CB.SC.U4AIE24015 | deekshaprabhu024@gmail.com |
-| K. Supriya | CB.SC.U4AIE24025 | ksupriya2430@gmail.com |
-| Shivanandana A | CB.SC.U4AIE24049 | shivanandana83@gmail.com |
-| Diya Prakash | CB.SC.U4AIE24111 | diyapnair07@gmail.com |
-| V R Sridevi | CB.SC.U4AIE24166 | sridevirajansri@gmail.com |
+| Deeksha Prabhu | CB.SC.U4AIE24015 | cb.sc.u4aie24015@cb.students.amrita.edu |
+| K. Supriya | CB.SC.U4AIE24025 | cb.sc.u4aie24025@cb.students.amrita.edu |
+| Shivanandana A | CB.SC.U4AIE24049 | cb.sc.u4aie24049@cb.students.amrita.edu |
+| Diya Prakash | CB.SC.U4AIE24111 | cb.sc.u4aie24111@cb.students.amrita.edu |
+| V R Sridevi | CB.SC.U4AIE24166 | cb.sc.u4aie24166@cb.students.amrita.edu |
 
 
 ---
@@ -214,9 +214,9 @@ $$
 
 where:
 
-* \(x_k\) is the current state.
-* \(u_k\) is the control input applied at the current step.
-* \(x_{k+1}\) is the next state.
+* $\(x_k\)$ is the current state.
+* $\(u_k\)$ is the control input applied at the current step.
+* $\(x_{k+1}\)$ is the next state.
 
 The state variables differ between platforms.
 
@@ -484,7 +484,7 @@ $$
 \boxed{G=X_{\mathrm{next}}\Omega^\dagger}
 $$
 
-where \(\Omega^\dagger\) is the pseudoinverse of the augmented matrix.
+where $\(\Omega^\dagger\)$ is the pseudoinverse of the augmented matrix.
 
 Once \(G\) has been estimated, it is divided into two parts:
 
@@ -511,9 +511,9 @@ $$
 
 where:
 
-* \(U_\Omega\) contains left singular vectors.
-* \(\Sigma\) contains singular values.
-* \(V\) contains right singular vectors.
+* $\(U_\Omega\)$ contains left singular vectors.
+* $\(\Sigma\)$ contains singular values.
+* $\(V\)$ contains right singular vectors.
 
 When a truncated decomposition is used,
 
@@ -1998,9 +1998,6 @@ These results highlight the limitations of the current six-state linear approxim
 
 ---
 
-
----
-
 ## 7.4 ArduPilot Software-In-The-Loop Implementation
 
 **Directory:** `ardupilot_project/`
@@ -2454,10 +2451,8 @@ $$\min_{K}\;\big\|\Psi(X')-K\,\Psi(X)\big\|_F^2\;\Rightarrow\;K=\Psi(X')\Psi(X)^
 
 With control, the EDMDc regression used here is
 
-$$
-\Psi(x_{k+1})\approx A_\Psi\Psi(x_k)+Bu_k,\qquad
-G=[A_\Psi\;\;B]=\Psi(X')\begin{bmatrix}\Psi(X)\\U\end{bmatrix}^{+}.
-$$
+$$\Psi(x_{k+1})\approx A_\Psi\Psi(x_k)+Bu_k,\qquad
+G=[A_\Psi\;\;B]=\Psi(X')\begin{bmatrix}\Psi(X)\\end{bmatrix}^{+}.$$
 
 The first twelve rows of $\Psi(x_{k+1})$ are the original states, so predictions are read off directly and errors can be reported in the original 12-state space. The dictionary only approximates the invariant subspace, so closure is not guaranteed; that is why validation on held-out data (Section 7.5.9) is needed.
 <!-- END -->
@@ -3871,8 +3866,6 @@ Generated data and plots are saved in the corresponding `data/` and `plots/` dir
 The precise dependencies differ between implementations. A single Python environment should not be assumed to contain everything required by all simulator branches.
 
 ---
-
-# 15. References
 
 # 15. References
 
