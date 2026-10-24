@@ -1970,7 +1970,7 @@ Toy Examples Leading to the Drake Experiments
 
 Each toy isolates one idea used later. All numbers were checked numerically.
 
-Toy 1: DMDc by hand (a 2-state, 1-input system)
+# Toy 1: DMDc by hand (a 2-state, 1-input system)
 
 Take the true system
 
@@ -1986,17 +1986,10 @@ $k$	$x_k$	$u_k$	$x_{k+1}$
 2	$(0,1)$	0	$(0.1,\;0.8)$
 3	$(1,1)$	2	$(1.0,\;1.8)$
 
-Stack them as in Section 6:
-
-$$
-\Omega=\begin{bmatrix}1&0&1\\0&1&1\\1&0&2\end{bmatrix},\quad
-X'=\begin{bmatrix}0.9&0.1&1.0\\0.5&0.8&1.8\end{bmatrix},\quad
-G=X'\Omega^{+}=[\,A\;\;B\,].
-$$
 
 Since $\det\Omega=1\neq0$ the regression is exact and returns the true $A,B$. The eigenvalues $0.9$ and $0.8$ are inside the unit circle, so the identified system is stable and the state decays like $0.9^k$. The Drake DMDc does the same with a $12\times16$ matrix $G$.
 
-Toy 2: Why a nonlinear system needs a lift (Koopman)
+# Toy 2: Why a nonlinear system needs a lift (Koopman)
 $$\dot x_1=\mu x_1,\qquad \dot x_2=\lambda\,(x_2-x_1^2).$$
 
 This is nonlinear in $x_1$. Add the observable $y=x_1^2$, so $\dot y=2x_1\dot x_1=2\mu y$. In the lifted coordinates $(x_1,x_2,y)$ the system is exactly linear:
@@ -2009,11 +2002,11 @@ $$
 
 Plain DMDc on $(x_1,x_2)$ cannot represent this; EDMDc with the dictionary $\Psi=[x_1,x_2,x_1^2]$ can. The Drake EDMDc applies the same idea with $\sin$ and $\cos$ of the attitude angles.
 
-Toy 3: Why $\sin\theta$ is added for the quadrotor
+# Toy 3: Why $\sin\theta$ is added for the quadrotor
 
 Horizontal acceleration depends on thrust tilt, roughly $a_x\propto \sin\theta$. A linear model uses $\sin\theta\approx\theta$. At $\theta=0.3$ rad, $\sin 0.3=0.2955$, so the linear model is off by about $1.5\%$; it gets worse as angles grow. Adding $\sin\theta,\cos\theta$ lets a linear regression represent the tilt-to-acceleration coupling without assuming small angles.
 
-Toy 4: SINDy recovers a sparse law, and the threshold matters
+# Toy 4: SINDy recovers a sparse law, and the threshold matters
 
 Library $\Theta=[1,\;x,\;y,\;x^2,\;xy,\;y^2]$, data from Lotka-Volterra ($\alpha=1.1,\beta=0.4,\delta=0.1,\gamma=0.4$), noise-free derivative estimates. STLSQ returns
 
@@ -2021,7 +2014,7 @@ $$\dot x = 1.099\,x-0.400\,xy,\qquad \dot y=-0.400\,y+0.100\,xy$$
 
 with 4 of 12 coefficients active for thresholds $0.01$ and $0.05$. With threshold $0.1$ the true coefficient $\delta=0.1$ is pruned and the $\dot y$ equation collapses to zero. The rule: the threshold must sit below the smallest true coefficient and above the noise floor.
 
-Toy 5: One-dimensional Kalman update
+# Toy 5: One-dimensional Kalman update
 
 Model predicts $\hat x^-=2.0$ with variance $P^-=1$. Sensor reads $z=3.0$ with variance $R=1$.
 
@@ -2029,7 +2022,7 @@ $$K=\frac{P^-}{P^-+R}=0.5,\qquad \hat x=\hat x^-+K(z-\hat x^-)=2.5,\qquad P=(1-K
 
 Trusting the sensor less (larger $R$) shrinks $K$ and keeps the estimate near the model. The Drake filter does this for 12 states at once with $Q=0.001I$, $R=0.01I$.
 
-Toy 6: Why EDMDc can become ill-conditioned
+# Toy 6: Why EDMDc can become ill-conditioned
 
 For small angles $\sin\theta\approx\theta$ (at $\theta=0.1$: $0.09983$ vs $0.1$, a gap of $1.7\times10^{-4}$) and $\cos\theta\approx1-\theta^2/2$. The lifted columns are almost linear combinations of existing ones, so $\Omega$ is nearly rank deficient and $\Omega^{+}$ has huge entries. This is what produced a maximum eigenvalue near $10^{4}$ in Section 7.5.9, and why a small ridge term fixes it.
 
