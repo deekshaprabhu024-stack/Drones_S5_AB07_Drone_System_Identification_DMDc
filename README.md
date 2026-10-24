@@ -1539,75 +1539,91 @@ LQR control is not implemented in this MuJoCo branch.
 
 ---
 
-## 7.3 Gazebo Harmonic and ROS 2 Jazzy Implementation
 
-**ROS 2 package:** `quad_dmdc_sim`
+## Gazebo and ROS 2
 
-The Gazebo implementation uses Gazebo Harmonic and ROS 2 Jazzy to simulate a quadrotor, execute a PID-controlled flight, collect state and actuator data, and identify a translational dynamics model using DMDc.
+**ROS 2 Package:** `quad_dmdc_sim`
+
+The Gazebo implementation uses Gazebo Harmonic and ROS 2 Jazzy to simulate a quadrotor, execute PID-controlled flight, collect state and motor-command data, and identify a translational dynamics model using Dynamic Mode Decomposition with Control (DMDc).
+
+The identified model is used to predict the drone's motion and compare the predicted trajectory with the actual simulation results.
 
 ### 7.3.1 Simulation Environment
 
-The implementation targets:
+The implementation uses:
 
-* Ubuntu 24.04.
-* ROS 2 Jazzy.
-* Gazebo Harmonic.
-* Python 3.
-* NumPy and Matplotlib for numerical processing and plotting.
+- **Operating System:** Ubuntu 24.04
+- **ROS Version:** ROS 2 Jazzy
+- **Simulator:** Gazebo Harmonic
+- **Programming Language:** Python 3
+- **Libraries:** NumPy and Matplotlib
 
-The package is named `quad_dmdc_sim`.
+The ROS 2 package is named `quad_dmdc_sim`.
 
-The workflow is
+The complete workflow is:
 
 $$
 \begin{aligned}
-&\text{PID-Controlled Flight}\\
+&\text{PID-Controlled Quadrotor Flight}\\
 &\quad\downarrow\\
 &\text{Gazebo State and Motor Logging}\\
 &\quad\downarrow\\
 &X,\ X_{\mathrm{next}},\ U\\
 &\quad\downarrow\\
-&\text{SVD-Based DMDc}\\
+&\text{SVD-Based DMDc Identification}\\
 &\quad\downarrow\\
-&A,\ B\\
+&\text{System Matrices } A,\ B\\
 &\quad\downarrow\\
-&\text{Multi-Step Prediction and RMSE}
+&\text{Multi-Step Trajectory Prediction}\\
+&\quad\downarrow\\
+&\text{RMSE and Result Visualization}
 \end{aligned}
 $$
 
 ### 7.3.2 Flight Controller
 
-The PID controller internally uses the full vehicle pose and associated state information to stabilize the drone.
+A PID-based flight controller is used to stabilize the quadrotor and follow the desired flight trajectory.
 
-The controller is necessary because a quadrotor must change its attitude to accelerate horizontally. However, the DMDc model deliberately uses only the six translational state variables.
+The controller uses position, velocity, orientation, and angular-rate information to maintain stable flight.
 
-This distinction separates the state representation needed for physical flight control from the smaller state representation selected for system identification.
+A quadrotor must change its roll and pitch angles to accelerate horizontally. Therefore, attitude control is necessary even though the DMDc model uses only translational states.
 
-The controller also includes a correction to the motor-mixing logic. Roll and pitch were previously cross-coupled, and the pitch feedback polarity was inverted. These issues caused unstable behaviour, including flips, spins, and crashes. The corrected controller uses independently and consistently wired roll and pitch channels.
+The controller includes corrections to the motor-mixing logic. Previously, roll and pitch were cross-coupled, and the pitch feedback polarity was inverted. This caused instability, including flips and crashes.
+
+The corrected controller separates the roll and pitch control channels and provides more stable flight behaviour.
 
 ### 7.3.3 State and Input Representation
 
-The DMDc state is
+The DMDc model considers six translational state variables:
 
 $$
-x=
+\mathbf{x}_k=
 \begin{bmatrix}
-x&y&z&v_x&v_y&v_z
+x & y & z & v_x & v_y & v_z
 \end{bmatrix}^{T}
 $$
 
-The control input is
+where:
+
+- $x,y,z$ represent the drone's position.
+- $v_x,v_y,v_z$ represent translational velocities.
+
+The control input consists of four motor commands:
 
 $$
-u=
+\mathbf{u}_k=
 \begin{bmatrix}
-u_1&u_2&u_3&u_4
+u_1 & u_2 & u_3 & u_4
 \end{bmatrix}^{T}
 $$
 
-where the inputs correspond to the four motor commands.
+The discrete-time DMDc model is:
 
-The model dimensions are
+$$
+\mathbf{x}_{k+1}=A\mathbf{x}_k+B\mathbf{u}_k
+$$
+
+The system matrices have dimensions:
 
 $$
 A\in\mathbb{R}^{6\times6}
@@ -1617,66 +1633,91 @@ $$
 B\in\mathbb{R}^{6\times4}
 $$
 
-The DMDc state excludes roll, pitch, yaw, and angular velocity, even though the controller uses attitude internally.
+Here, matrix $A$ represents the relationship between consecutive states, while matrix $B$ represents the influence of the motor inputs.
+
+Roll, pitch, yaw, and angular velocity are used internally by the flight controller but are not included in the six-state DMDc representation.
 
 ### 7.3.4 Flight Sequence
 
-The manual flight demonstration follows the intended sequence:
+The quadrotor follows a predefined flight sequence:
 
 $$
-\text{Takeoff}
-\rightarrow
-\text{Hover}
-\rightarrow
-\text{Move in X}
-\rightarrow
-\text{Move in Y}
-\rightarrow
-\text{Return}
-\rightarrow
-\text{Descend}
-\rightarrow
-\text{Stop Motors}
+\begin{aligned}
+&\text{Takeoff}\\
+&\downarrow\\
+&\text{Hover}\\
+&\downarrow\\
+&\text{Move Along X}\\
+&\downarrow\\
+&\text{Move Along Y}\\
+&\downarrow\\
+&\text{Return}\\
+&\downarrow\\
+&\text{Descend}\\
+&\downarrow\\
+&\text{Stop Motors}
+\end{aligned}
 $$
 
-The flight controller stabilizes the simulated drone while the state and motor-command information is available for recording.
+The PID controller continuously adjusts the motor commands to follow the target positions while maintaining flight stability.
+
+Small periodic motor excitation is also applied during data collection to help capture the effect of control inputs on the quadrotor dynamics.
 
 ### 7.3.5 Data Collection
 
-The data-collection component records consecutive state transitions and their corresponding control inputs.
+During the simulated flight, the system records consecutive translational states and the corresponding motor commands.
 
-The output is saved as:
+The collected dataset is saved as:
 
 `data/collected_data.npz`
 
-The expected matrix dimensions are:
+The recorded matrices are:
 
-| Array    | Shape         | Description               |
-| -------- | ------------- | ------------------------- |
-| `X`      | \(6\times N\) | Current states            |
-| `X_next` | \(6\times N\) | Corresponding next states |
-| `U`      | \(4\times N\) | Applied motor inputs      |
+| Array | Dimensions | Description |
+|---|---|---|
+| `X` | $6\times N$ | Current state measurements |
+| `X_next` | $6\times N$ | Next-state measurements |
+| `U` | $4\times N$ | Applied motor commands |
 
-Each column represents one sample.
+Each column represents one recorded state transition.
 
-### 7.3.6 DMDc Identification
+The data-collection implementation requests 6,000 simulation steps, although the final number of samples may differ if invalid measurements are skipped.
 
-The identification module constructs
+These measurements are subsequently used to identify the system matrices through DMDc.
+
+### 7.3.6 DMDc Model Identification
+
+Dynamic Mode Decomposition with Control is used to estimate a linear model of the quadrotor's translational dynamics.
+
+The recorded state and input matrices are combined as:
 
 $$
 \Omega=
 \begin{bmatrix}
-X\\U
+X\\
+U
 \end{bmatrix}
 $$
 
-and estimates
+Singular Value Decomposition (SVD) is applied:
+
+$$
+\Omega=P\Sigma V^T
+$$
+
+The pseudoinverse is obtained as:
+
+$$
+\Omega^\dagger=V\Sigma^\dagger P^T
+$$
+
+The combined system matrix is calculated using:
 
 $$
 G=X_{\mathrm{next}}\Omega^\dagger
 $$
 
-where
+where:
 
 $$
 G=
@@ -1685,47 +1726,142 @@ A&B
 \end{bmatrix}
 $$
 
-The estimated model is
+The resulting identified model is:
 
 $$
-x_{k+1}=Ax_k+Bu_k
+\boxed{\mathbf{x}_{k+1}=A\mathbf{x}_k+B\mathbf{u}_k}
 $$
 
-The learned model is used for multi-step prediction, with held-out prediction error reported through RMSE.
+The learned matrices are used to perform multi-step prediction.
+
+Starting from an observed initial state, the model repeatedly predicts the next state using the previously predicted state and the recorded control inputs.
+
+Prediction error can be measured using Root Mean Square Error (RMSE):
+
+$$
+RMSE=
+\sqrt{
+\frac{1}{N}
+\sum_{k=1}^{N}
+\left(y_k-\hat{y}_k\right)^2
+}
+$$
+
+where:
+
+- $y_k$ is the actual measured value.
+- $\hat{y}_k$ is the predicted value.
+- $N$ is the number of evaluated samples.
 
 ### 7.3.7 Generated Outputs
 
-The identification pipeline generates the following outputs:
+The DMDc identification pipeline generates the following files:
 
-| File                        | Purpose                      |
-| --------------------------- | ---------------------------- |
-| `models_out/dmdc_model.npz` | Saved identified DMDc model  |
-| `plots/position.png`        | Position prediction analysis |
-| `plots/velocity.png`        | Velocity prediction analysis |
-| `plots/singular_values.png` | Singular-value analysis      |
-| `plots/eigenvalues.png`     | Eigenvalue analysis          |
+| File | Purpose |
+|---|---|
+| `models_out/dmdc_model.npz` | Stores identified DMDc matrices |
+| `plots/position.png` | Actual versus predicted position |
+| `plots/velocity.png` | Actual versus predicted velocity |
+| `plots/singular_values.png` | Singular-value analysis |
+| `plots/eigenvalues.png` | Eigenvalue analysis |
 
-The script also reports the held-out multi-step prediction RMSE.
+The script also reports the RMSE for the multi-step state prediction.
 
-A specific numerical RMSE value is not included here because no corresponding result was supplied for this experiment.
+### 7.3.8 Experimental Results and Analysis
 
-### 7.3.8 ROS Communication
+#### Position Prediction: Actual vs DMDc
 
-The Gazebo model publishes odometry through its model-scoped odometry topic.
+The following graph compares the actual position recorded during the Gazebo simulation with the trajectory predicted using the identified DMDc model.
 
-The relevant topic is
+
+The blue solid line represents the actual drone position, while the orange dashed line represents the predicted position.
+
+The comparison is performed for the X, Y, and Z translational coordinates.
+
+**X-Axis Position Analysis**
+
+The actual X position remains within a relatively limited range and shows small oscillations and changes during the flight.
+
+However, the predicted X position initially increases before gradually decreasing and diverging into negative values.
+
+This indicates that the identified model accumulates significant prediction error over the multi-step rollout.
+
+**Y-Axis Position Analysis**
+
+The actual Y position exhibits continuous oscillatory behaviour throughout the flight.
+
+The DMDc model captures some of the oscillatory patterns during the earlier stages of prediction.
+
+However, the predicted oscillations gradually develop a significant offset from the actual trajectory.
+
+This suggests that the model partially captures the oscillatory characteristics but fails to maintain accurate long-term predictions.
+
+**Z-Axis Position Analysis**
+
+The actual Z position shows distinct altitude levels and a sharp descent during the later stages of flight.
+
+The DMDc prediction changes more gradually and does not accurately reproduce the sudden altitude transitions.
+
+This demonstrates the limitations of the identified linear model in representing the complete vertical dynamics of the quadrotor.
+
+#### Overall Result Interpretation
+
+The experimental results demonstrate that the DMDc pipeline successfully generates a discrete-time state-space model using the collected Gazebo simulation data.
+
+However, the predicted trajectories increasingly differ from the actual drone positions during multi-step prediction.
+
+Possible reasons include:
+
+- The nonlinear nature of quadrotor dynamics.
+- The exclusion of roll, pitch, yaw, and angular velocity from the identified state.
+- The influence of attitude changes on translational acceleration.
+- Accumulation of prediction errors over repeated time steps.
+- Limitations of a single linear model across different flight conditions.
+
+Therefore, the current DMDc model provides a baseline for translational dynamics identification but requires further improvement for accurate long-term trajectory prediction.
+
+**Evaluation Note:** The current identification script fits the DMDc model using the complete collected dataset and performs a prediction rollout starting from the midpoint of the trajectory. Consequently, this represents a second-half multi-step prediction rather than a fully independent held-out test.
+
+### 7.3.9 ROS 2 and Gazebo Communication
+
+ROS 2 topics are used to communicate between the Gazebo simulation, flight controller, and data-collection components.
+
+**Odometry Topic**
 
 `/x500_dmdc/odometry`
 
-The implementation uses `nav_msgs/Odometry` rather than relying on a dedicated pose-publisher plugin.
+Message type:
 
-Motor-speed commands are communicated through the model-scoped motor-command topic, with the ROS bridge mapping the actuator information to `actuator_msgs/msg/Actuators`.
+`nav_msgs/msg/Odometry`
 
-The motor command topic is
+This topic provides drone state information, including position and orientation.
+
+The implementation uses the odometry publisher rather than a separate pose-publisher plugin.
+
+**Motor Command Topic**
 
 `/x500_dmdc/command/motor_speed`
 
-These topics connect the simulated vehicle, the flight controller, and the data-collection pipeline.
+Message type:
+
+`actuator_msgs/msg/Actuators`
+
+This topic communicates the four motor-speed commands to the simulated quadrotor through the ROS-Gazebo bridge.
+
+The controller uses odometry feedback to calculate the required motor commands, while the data-collection module stores the translational state and actuator inputs for DMDc identification.
+
+### 7.3.10 Conclusion
+
+The Gazebo and ROS 2 implementation demonstrates an end-to-end workflow for quadrotor simulation, PID-controlled flight, data collection, DMDc identification, and trajectory prediction.
+
+The system successfully collects translational state measurements and motor commands, estimates the DMDc matrices $A$ and $B$, and produces predicted trajectories using the identified model.
+
+The experimental results reveal significant differences between the predicted and actual positions during longer prediction horizons.
+
+These results highlight the limitations of the current six-state linear approximation and provide a foundation for future improvements involving richer state representations, additional flight data, and more accurate system identification.
+
+---
+
 
 ---
 
