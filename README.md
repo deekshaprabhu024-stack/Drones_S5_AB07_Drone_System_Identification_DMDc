@@ -278,7 +278,7 @@ A smaller state can be easier to estimate and interpret, but it may also omit dy
 | Gym-PyBullet   | \([x,y,z,v_x,v_y,v_z]^T\)                                                      |               6 |
 | Gazebo         | \([x,y,z,v_x,v_y,v_z]^T\)                                                      |               6 |
 | MuJoCo         | \([z_{\mathrm{error}},v_z,\mathrm{roll},\mathrm{pitch},\mathrm{yaw},p,q,r]^T\) |               8 |
-| ArduPilot SITL | \([q_0,q_1,q_2,q_3,\omega_x,\omega_y,\omega_z]^T\)                             |               7 |
+| ArduPilot SITL | $[q_0,q_1,q_2,q_3,\omega_x,\omega_y,\omega_z]^T$                             |               7 |
 | Drake          | \([x,y,z,\phi,\theta,\psi,v_x,v_y,v_z,\omega_x,\omega_y,\omega_z]^T\)          |              12 |
 
 The ArduPilot implementation represents orientation using four quaternion components rather than three Euler angles.
@@ -333,7 +333,7 @@ The main implementations therefore estimate matrices with the following dimensio
 | Gym-PyBullet   | \(6\times6\)   | \(6\times4\)  |
 | Gazebo         | \(6\times6\)   | \(6\times4\)  |
 | MuJoCo         | \(8\times8\)   | \(8\times4\)  |
-| ArduPilot SITL | \(7\times7\)   | \(7\times4\)  |
+| ArduPilot SITL | $7\times7$   | $7\times4$  |
 | Drake DMDc     | \(12\times12\) | \(12\times4\) |
 
 The Drake EDMDc implementation additionally operates in a lifted feature space.
@@ -1811,11 +1811,11 @@ $$
 The extractor constructs a scalar-first quaternion from roll, pitch, and yaw
 using a ZYX Euler-angle conversion; its input-angle unit error is described in
 Section 7.4.2. The three angular-rate variables are the `RATE` log values in
-degrees per second, despite the \(\omega\) notation.
+degrees per second, despite the ω notation.
 
 The quaternion representation avoids the particular singularity associated with Euler-angle parameterizations.
 
-Because \(q\) and \(-q\) represent the same physical orientation, the preprocessing script checks successive quaternion samples and flips the sign when necessary to maintain numerical continuity.
+Because $q$ and $-q$ represent the same physical orientation, the preprocessing script checks successive quaternion samples and flips the sign when necessary to maintain numerical continuity.
 
 ### 7.4.4 Motor Input Transformation
 
@@ -1840,7 +1840,7 @@ $$
 U=MT^T
 $$
 
-where \(M\) contains the original motor-output samples.
+where $M$ contains the original motor-output samples.
 
 The first transformed coordinate is a collective combination, while the remaining coordinates are differential combinations. These are linear combinations of PWM output values, not calibrated thrust or torque inputs.
 
@@ -1864,8 +1864,8 @@ $$
 \qquad z\in\{x,u\}
 $$
 
-where \(\mu_j\) and \(\sigma_j\) are the training-set mean and standard
-deviation of variable \(j\). A standard deviation below \(10^{-12}\) is
+where $\mu_j$ and $\sigma_j$ are the training-set mean and standard
+deviation of variable $j$. A standard deviation below $10^{-12}$ is
 replaced with 1 in the scripts.
 
 The same training-derived statistics are applied to the test data, avoiding the use of test-set statistics during model fitting.
@@ -1896,10 +1896,10 @@ U_{1,\mathrm{train}}
 \end{bmatrix}
 $$
 
-where \(X_{1,\mathrm{train}}\) and \(X_{2,\mathrm{train}}\) contain consecutive
-standardized training-state snapshots and \(U_{1,\mathrm{train}}\) contains the
+where $X_{1,\mathrm{train}}$ and $X_{2,\mathrm{train}}$ contain consecutive
+standardized training-state snapshots and $U_{1,\mathrm{train}}$ contains the
 aligned standardized inputs. The resulting combined matrix is separated into
-\(A\) and \(B\).
+$A$ and $B$.
 
 NumPy's pseudoinverse uses SVD-based numerical computation. This implementation should not be confused with a separate truncated-SVD algorithm that explicitly selects a user-defined model rank.
 
@@ -1913,19 +1913,19 @@ $$
 \hat{x}_{k+1}=A\tilde{x}_k+B\tilde{u}_k
 $$
 
-Here, \(\tilde{x}_k\) and \(\tilde{u}_k\) are normalized values. The predicted
+Here, $\tilde{x}_k$ and $\tilde{u}_k$ are normalized values. The predicted
 quaternion is converted back to the original feature scale, normalized to unit
 length when possible, and then returned to normalized coordinates. Predictions
 are not fed back into the next step, so this is one-step validation, not a
 recursive rollout.
 
-The script reports per-state RMSE and \(R^2\) in normalized coordinates. It
+The script reports per-state RMSE and $R^2$ in normalized coordinates. It
 also rescales angular-rate RMSE by its training standard deviation and labels
 that output `rad/s`; the plotted angular-rate axes use the same label.
 Quaternion orientation error is computed as
-\(2\arccos(|q_{\mathrm{true}}^\mathsf{T}q_{\mathrm{pred}}|)\) in degrees after
+$2\arccos(|q_{\mathrm{true}}^\mathsf{T}q_{\mathrm{pred}}|)$ in degrees after
 normalizing both quaternions. The script also prints eigenvalues and the
-spectral radius of \(A\).
+spectral radius of $A$.
 
 ### 7.4.8 Generated Outputs
 
@@ -1947,7 +1947,7 @@ The `plots/` directory contains `actual_vs_predicted_attitude.png`,
 `actual_vs_predicted_rates.png`, `attitude_error.png`,
 `quaternion_components.png`, and `attitude_3d.png`.
 
-RMSE and R square results are mentioned in Section 8.4.
+RMSE and $R^2$ results are presented in Section 8.4.
 
 ---
 
@@ -2347,17 +2347,17 @@ It evaluates one-step predictions on the held-out chronological test segment and
 
 The reported one-step test results are:
 
-| State / metric | RMSE | \(R^2\) |
+| State / metric | RMSE | $R^2$ |
 | -------------- | --------: | --------: |
-| \(q_0\) | 0.045946 | -783.212681 |
-| \(q_1\) | 0.132508 | -0.270766 |
-| \(q_2\) | 0.090884 | 0.407436 |
-| \(q_3\) | 0.001982 | -5.717617 |
-| \(\omega_x\) | 0.464438 (normalized-state units) | -349.639089 |
-| \(\omega_y\) | 0.251966 (normalized-state units) | -273.345671 |
-| \(\omega_z\) | 0.008455 (normalized-state units) | -8.989679 |
+| $q_0$ | 0.045946 | -783.212681 |
+| $q_1$ | 0.132508 | -0.270766 |
+| $q_2$ | 0.090884 | 0.407436 |
+| $q_3$ | 0.001982 | -5.717617 |
+| $\omega_x$ | 0.464438 (normalized-state units) | -349.639089 |
+| $\omega_y$ | 0.251966 (normalized-state units) | -273.345671 |
+| $\omega_z$ | 0.008455 (normalized-state units) | -8.989679 |
 
-The script additionally reports angular-rate RMSE as \(1.298957\), \(1.217942\), and \(0.088337\) for \(x\), \(y\), and \(z\), respectively, labeling these values in rad/s. Quaternion orientation error is reported as 3.9362° RMSE, 3.6520° mean, and 12.8507° maximum. The identified matrix has spectral radius 0.9825389441443607; its eigenvalues are listed in the DMDc script output.
+The script additionally reports angular-rate RMSE as $1.298957$, $1.217942$, and $0.088337$ for $x$, $y$, and $z$, respectively, labeling these values in rad/s. Quaternion orientation error is reported as 3.9362° RMSE, 3.6520° mean, and 12.8507° maximum. The identified matrix has spectral radius 0.9825389441443607; its eigenvalues are listed in the DMDc script output.
 
 ## 8.5 Drake
 
