@@ -520,7 +520,6 @@ The project uses different numerical implementations across its branches. Some e
 ## 6.6 Model Prediction
 
 Once the matrices have been identified, the predicted state is
-
 $$
 \boxed{\hat{x}_{k+1}=A\hat{x}_k+Bu_k}
 $$
@@ -2277,13 +2276,185 @@ The individual state plots provide a visual comparison of the recursive DMDc pre
 
 The rank-4 experiment also demonstrates that reducing the retained model order can remove dynamics needed for accurate prediction.
 
-## 8.2 Gym-PyBullet
+### 8.2 Gym-PyBullet
 
-The Gym-PyBullet implementation produces an identified model, position and velocity prediction plots, and a singular-value plot.
+The Gym-PyBullet implementation generates PID-controlled quadrotor flight data and identifies a discrete-time model using Dynamic Mode Decomposition with Control (DMDc):
 
-The documented pipeline uses held-out test data for validation.
+$$
+x_{k+1} \approx Ax_k + Bu_k
+$$
 
-A numerical prediction RMSE is not included in the supplied project summary.
+The model uses six state variables—three positions and three linear velocities—and four motor RPM commands as control inputs.
+
+#### 8.2.1 Identified Model and Dataset
+
+The previously recorded experiment produced the following dataset and model dimensions:
+
+| Quantity | Dimensions | Description |
+|---|---:|---|
+| State data | `6 × 672` | Position and velocity measurements across 672 samples |
+| Input data | `4 × 672` | Four commanded motor RPM values per sample |
+| Current-state matrix, `X` | `6 × 671` | Current-state snapshots |
+| Next-state matrix, `X_next` | `6 × 671` | Corresponding next-state snapshots |
+| Control-input matrix, `U` | `4 × 671` | Inputs associated with state transitions |
+| State-transition matrix, `A` | `6 × 6` | Learned state-to-state mapping |
+| Control-input matrix, `B` | `6 × 4` | Learned influence of motor commands |
+
+The state and input vectors are:
+
+$$
+x_k =
+\begin{bmatrix}
+p_x & p_y & p_z & v_x & v_y & v_z
+\end{bmatrix}_k^{T}
+$$
+
+$$
+u_k =
+\begin{bmatrix}
+RPM_1 & RPM_2 & RPM_3 & RPM_4
+\end{bmatrix}_k^{T}
+$$
+
+At a control frequency of 48 Hz, 672 logged samples correspond to a 14-second experiment. These results describe the previously recorded run and should not be attributed to a different trajectory or duration without rerunning the identification.
+
+#### 8.2.2 Prediction Evaluation
+
+Two prediction modes are evaluated:
+
+| Evaluation mode | Method | Purpose |
+|---|---|---|
+| One-step prediction | Uses the recorded current state and control input to predict the next state | Measures immediate next-state fit |
+| Multi-step rollout | Starts from the recorded initial state and repeatedly uses predicted states with the logged input sequence | Measures accumulated trajectory-prediction error |
+
+One-step prediction uses:
+
+$$
+\hat{x}_{k+1} = Ax_k + Bu_k
+$$
+
+Multi-step rollout uses:
+
+$$
+\hat{x}_{k+1} = A\hat{x}_k + Bu_k
+$$
+
+The rollout is driven by the recorded RPM sequence. The PID controller is not recalculated from the predicted states during this evaluation.
+
+#### 8.2.3 Reported Prediction Errors
+
+Root Mean Square Error (RMSE) is calculated separately for each position and velocity component:
+
+$$
+RMSE_j =
+\sqrt{
+\frac{1}{M}
+\sum_{k=1}^{M}
+\left(\hat{x}_{j,k} - x_{j,k}\right)^2
+}
+$$
+
+The previously reported numerical results are:
+
+| State component | One-step RMSE | Multi-step rollout RMSE | Unit |
+|---|---:|---:|---|
+| X position | 0.0001316 | 0.1907420 | m |
+| Y position | 0.0000229 | 0.0043767 | m |
+| Z position | 0.0002484 | 0.1738306 | m |
+| X velocity | 0.0105376 | 0.1782020 | m/s |
+| Y velocity | 0.0018424 | 0.0174026 | m/s |
+| Z velocity | 0.0198657 | 0.1802519 | m/s |
+
+The reported one-step position RMSE values are below 0.25 mm. During multi-step rollout, the position RMSE increases to approximately 19.1 cm along X and 17.4 cm along Z.
+
+These preliminary results show a small immediate next-state fitting error but substantially larger accumulated rollout error. They do not establish accurate long-horizon prediction on unseen flight data.
+
+A small error along an individual axis must also be interpreted relative to the amount of motion observed along that axis.
+
+#### 8.2.4 Singular-Value Analysis
+
+The identification applies Singular Value Decomposition to the combined state–input matrix:
+
+$$
+\Omega =
+\begin{bmatrix}
+X \\
+U
+\end{bmatrix}
+$$
+
+The previously reported singular values are:
+
+| Index | Singular value |
+|---:|---:|
+| 1 | 749338.037 |
+| 2 | 29622.668 |
+| 3 | 17140.007 |
+| 4 | 11742.144 |
+| 5 | 5.248965 |
+| 6 | 4.247443 |
+| 7 | 3.196131 |
+| 8 | 3.060133 |
+| 9 | 0.450705 |
+| 10 | 0.101563 |
+
+The implementation retains all ten available singular directions using `rank=10`.
+
+Because raw motor RPM values are much larger numerically than position and velocity values, the singular-value magnitudes reflect measurement scaling as well as variation in the data. The large gap between the first four and remaining singular values does not, by itself, justify selecting a four-dimensional model.
+
+The singular-value plot is a numerical diagnostic, not a prediction-accuracy metric.
+
+#### 8.2.5 Generated Result Files
+
+| Output file | Contents or purpose |
+|---|---|
+| `data/pid_dmdc_log.csv` | Recorded flight states, reference values, and motor RPM commands |
+| `results/dmdc_model.npz` | Identified `A` and `B` matrices, singular values, and state/input column names |
+| `results/dmdc_position_prediction.png` | Recorded PyBullet positions compared with DMDc rollout predictions |
+| `results/dmdc_velocity_prediction.png` | Recorded PyBullet velocities compared with DMDc rollout predictions |
+| `results/dmdc_singular_values.png` | Singular-value spectrum of the combined state–input matrix |
+
+The identification script prints one-step and rollout RMSE values to the terminal. The supplied script does not automatically save a separate metrics file.
+
+#### 8.2.6 Validation Status and Qualifications
+
+**The supplied identification code evaluates the model on the same dataset used for fitting; it does not implement held-out test validation.**
+
+The validation status is therefore:
+
+| Item | Status |
+|---|---|
+| DMDc model identification | Implemented |
+| One-step RMSE calculation | Implemented |
+| Multi-step rollout RMSE calculation | Implemented |
+| Position and velocity comparison plots | Implemented |
+| Singular-value diagnostic plot | Implemented |
+| Held-out test dataset | Not implemented in the supplied script |
+| Independent flight-trajectory validation | Not demonstrated by the reported results |
+
+A state–input timing issue was also identified in the supplied scripts:
+
+- The simulation logs the state after applying each motor command.
+- The original identification script pairs consecutive logged states with `inputs[:, :-1]`.
+- For that post-step logging convention, the input associated with the transition between consecutive recorded states is selected using `inputs[:, 1:]`.
+
+The reported numerical values above were obtained before this correction was confirmed. They should be treated as preliminary outputs and regenerated after correcting the timing alignment.
+
+A clearer logging design is to store each transition explicitly as:
+
+    current_state, applied_motor_command, next_state
+
+#### 8.2.7 Discussion
+
+The implementation successfully establishes a workflow from PID-controlled simulation to data-driven model identification and prediction evaluation.
+
+The larger rollout errors may arise from a combination of:
+
+- Accumulation of small prediction errors.
+- The use of a constant linear model for nonlinear drone motion.
+- Omission of attitude and angular velocity from the identified state.
+- State and input scaling differences.
+- State–input timing misalignment in the supplied implementation.
 
 ## 8.3 Gazebo
 
