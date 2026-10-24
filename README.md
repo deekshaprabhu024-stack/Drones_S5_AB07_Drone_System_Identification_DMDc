@@ -2779,11 +2779,86 @@ The larger rollout errors may arise from a combination of:
 
 ## 8.3 Gazebo
 
-The Gazebo implementation saves the identified model and generates position, velocity, singular-value, and eigenvalue plots.
 
-Its identification script reports held-out multi-step prediction RMSE.
+The performance of the identified DMDc model was evaluated by comparing the actual quadrotor position obtained from Gazebo with the position predicted by the learned state-space model.
 
-A numerical RMSE result was not supplied for inclusion in this README.
+The predicted states are obtained using:
+
+$$
+\hat{x}_{k+1}=A\hat{x}_k+Bu_k
+$$
+
+where $A$ and $B$ are the identified DMDc matrices, $\hat{x}_k$ is the predicted state, and $u_k$ represents the recorded motor inputs.
+
+#### Observations
+
+**1. X-Axis Position**
+
+The actual X position remains within a relatively small range with periodic oscillations. However, the predicted position initially increases and subsequently decreases into negative values.
+
+This indicates significant prediction drift over longer time steps.
+
+**2. Y-Axis Position**
+
+The actual Y position exhibits continuous oscillatory motion. The DMDc prediction captures some initial oscillatory behaviour but gradually develops a significant offset.
+
+This suggests that the model partially learns the oscillatory dynamics but does not accurately reproduce the long-term trajectory.
+
+**3. Z-Axis Position**
+
+The actual Z position exhibits distinct altitude levels and a sharp descent during the flight.
+
+The predicted altitude changes gradually and fails to reproduce the sudden decrease in height.
+
+This indicates limitations in predicting altitude transitions using the identified linear model.
+
+#### Prediction Error
+
+The prediction error can be evaluated using Root Mean Square Error (RMSE):
+
+$$
+RMSE=
+\sqrt{
+\frac{1}{N}
+\sum_{k=1}^{N}
+(x_k-\hat{x}_k)^2
+}
+$$
+
+where:
+
+- $x_k$ represents the actual state component.
+- $\hat{x}_k$ represents the predicted state component.
+- $N$ represents the number of evaluated time steps.
+
+The plot shows that the prediction error increases over time, particularly along the X and Y axes.
+
+A numerical RMSE value is not reported here because the corresponding numerical output is unavailable.
+
+#### Result Discussion
+
+The DMDc implementation successfully identifies the matrices $A$ and $B$ and generates multi-step trajectory predictions using the collected simulation data.
+
+However, the predicted trajectory deviates significantly from the actual quadrotor motion over longer prediction horizons.
+
+Possible reasons include:
+
+- Nonlinear quadrotor dynamics.
+- Exclusion of attitude and angular-velocity states.
+- Accumulation of errors during multi-step prediction.
+- Limitations of the linear approximation during changing flight conditions.
+
+The current experiment demonstrates the DMDc system-identification workflow but also highlights the need for further model improvement.
+
+**Evaluation Note:** The model was fitted using the complete collected dataset, and a multi-step rollout was performed from the midpoint. Therefore, the result is not an independent held-out evaluation.
+
+#### Conclusion
+
+The Gazebo simulation successfully demonstrates quadrotor flight control, state and input data collection, DMDc model identification, and trajectory prediction.
+
+The experimental results show that the identified linear model can generate predictions but exhibits considerable long-term prediction errors.
+
+Future improvements may include incorporating attitude dynamics, improving training-data coverage, and evaluating the model on independent flight trajectories.
 
 ## 8.4 ArduPilot SITL
 
