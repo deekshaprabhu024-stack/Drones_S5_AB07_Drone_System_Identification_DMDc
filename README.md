@@ -1744,7 +1744,7 @@ The objective is to identify the quadrotor's attitude and rotational dynamics fr
 
 The implementation uses ArduPilot DataFlash `.BIN` logs [8], read with `pymavlink` [9].
 
-The supplied project contains four raw log files.
+The project contains four raw log files.
 
 The DataFlash messages used by the extraction script are:
 
@@ -1950,9 +1950,7 @@ The `plots/` directory contains `actual_vs_predicted_attitude.png`,
 `actual_vs_predicted_rates.png`, `attitude_error.png`,
 `quaternion_components.png`, and `attitude_3d.png`.
 
-The implementation also calculates prediction metrics and eigenvalue diagnostics.
-
-The numerical result values are not reproduced here because no corresponding metric output was supplied with the project summary.
+RMSE and R square results are mentioned in Section 8.4.
 
 ---
 
@@ -2486,7 +2484,19 @@ The ArduPilot implementation identifies attitude dynamics using quaternion and a
 
 It evaluates one-step predictions on the held-out chronological test segment and generates attitude, angular-rate, orientation-error, and input plots.
 
-Numerical evaluation outputs are produced by the script, but specific metric values were not supplied for this summary.
+The reported one-step test results are:
+
+| State / metric | RMSE | \(R^2\) |
+| -------------- | --------: | --------: |
+| \(q_0\) | 0.045946 | -783.212681 |
+| \(q_1\) | 0.132508 | -0.270766 |
+| \(q_2\) | 0.090884 | 0.407436 |
+| \(q_3\) | 0.001982 | -5.717617 |
+| \(\omega_x\) | 0.464438 (normalized-state units) | -349.639089 |
+| \(\omega_y\) | 0.251966 (normalized-state units) | -273.345671 |
+| \(\omega_z\) | 0.008455 (normalized-state units) | -8.989679 |
+
+The script additionally reports angular-rate RMSE as \(1.298957\), \(1.217942\), and \(0.088337\) for \(x\), \(y\), and \(z\), respectively, labeling these values in rad/s. Quaternion orientation error is reported as 3.9362° RMSE, 3.6520° mean, and 12.8507° maximum. The identified matrix has spectral radius 0.9825389441443607; its eigenvalues are listed in the DMDc script output.
 
 ## 8.5 Drake
 
@@ -3050,7 +3060,7 @@ The repository contains the ArduPilot log-processing project, not the ArduPilot
 source tree or SITL build. Users cloning this repository must obtain the
 ArduPilot source separately, initialize its submodules, install its SITL
 build/runtime prerequisites, and build or otherwise provide the ArduCopter SITL
-executable. Follow the official ArduPilot setup instructions [4, 10]. The
+executable. Follow the official ArduPilot setup instructions. The
 commands below describe the local workflow; they do not run automatically as
 part of the analysis scripts.
 
@@ -3061,7 +3071,7 @@ git clone --recurse-submodules https://github.com/ArduPilot/ardupilot.git
 ```
 
 Install the SITL build prerequisites and build ArduCopter by following the
-official Linux setup instructions [10]. On supported Debian-based Linux
+official Linux setup instructions. On supported Debian-based Linux
 systems, the documented prerequisite and SITL build steps are:
 
 ```bash
@@ -3073,7 +3083,7 @@ Tools/environment_install/install-prereqs-ubuntu.sh -y
 ```
 
 These operating-system and build dependencies are separate from the Python
-packages needed for log analysis.
+packages needed for log analysis. Ensure that it is cloned in the same parent directory as /ardupilot_project.
 
 ### Run a local ArduCopter SITL flight
 
@@ -3095,7 +3105,7 @@ arm throttle
 takeoff 10
 ```
 
-The simulated flight generates an ArduPilot DataFlash `.BIN` log. The ArduPilot
+The above are example commands used for the drone takeoff. Use such commands for new data collection if required. The simulated flight generates an ArduPilot DataFlash `.BIN` log. The ArduPilot
 source checkout, SITL build, and their build/runtime dependencies are separate
 from this repository and from the Python analysis dependencies below.
 
@@ -3119,8 +3129,8 @@ python3 dmdc.py
 python3 plot_final.py
 ```
 
-The checked-in processed CSV is not documented as having been extracted from
-any particular one of the four checked-in raw logs. Choose the intended input
+The checked-in processed CSV is extracted from
+the flight08.BIN raw logs. Choose the intended input
 log deliberately; extraction overwrites the processed CSV, and the later
 analysis scripts overwrite results in `../results/final/`.
 
