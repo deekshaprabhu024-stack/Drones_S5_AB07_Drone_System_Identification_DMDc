@@ -1,0 +1,24 @@
+# Gazebo <-> ROS 2 bridge for the DMDc quadrotor.
+# The model only has an OdometryPublisher plugin (no PosePublisher), so we
+# bridge /model/x500_dmdc/odometry (nav_msgs/Odometry) and pull pose out of
+# it on the ROS side. (A PosePublisher plugin would be the "obvious" fix,
+# but its publish_model_pose option is broken on Gazebo Harmonic:
+# https://github.com/gazebosim/gz-sim/issues/2690 - odometry avoids that.)
+
+- ros_topic_name: "/x500_dmdc/odometry"
+  gz_topic_name: "/model/x500_dmdc/odometry_with_covariance"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.OdometryWithCovariance"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/x500_dmdc/command/motor_speed"
+  gz_topic_name: "/model/x500_dmdc/command/motor_speed"
+  ros_type_name: "actuator_msgs/msg/Actuators"
+  gz_type_name: "gz.msgs.Actuators"
+  direction: ROS_TO_GZ
+
+- ros_topic_name: "/clock"
+  gz_topic_name: "/clock"
+  ros_type_name: "rosgraph_msgs/msg/Clock"
+  gz_type_name: "gz.msgs.Clock"
+  direction: GZ_TO_ROS
